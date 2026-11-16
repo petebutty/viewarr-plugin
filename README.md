@@ -1,18 +1,13 @@
 # Viewarr plugin for Dispatcharr
 
-House settings for [Viewarr](https://github.com/petebutty/viewarr), the Android TV app for Dispatcharr.
+Optional extra for [Viewarr](https://github.com/petebutty/viewarr), the Android TV app for Dispatcharr.
 
-**Outside addresses**: the home address and outside address of each of your servers (Dispatcharr, Navidrome,
-Seerr, Jellyfin, addons such as AIOStreams / AIOMetadata…). Every Viewarr signed in to this Dispatcharr reads them
-when it starts, so changing an address here updates every TV, including friends' and family's in other houses. A TV
-that can't reach a home address uses its outside one.
+**Backups**: Viewarr keeps backups of an admin's whole setup on your Dispatcharr (settings, and sign-ins encrypted
+with the admin's own Dispatcharr key). Save and restore them in Viewarr: Settings → Users & profiles → Backups. The
+newest 30 are kept, in Dispatcharr's plugin data folder, reachable only by admins.
+
+Profiles and sharing with friends work without this plugin.
 
 ## Install
 
-Dispatcharr → Plugins → Import, and choose `viewarr-plugin-<version>.zip` from the releases. Enable it, then set
-the addresses here or in Viewarr (Settings → Profiles → Away addresses; admins only).
-
-## Privacy
-
-Dispatcharr lets every signed-in user read plugin settings, so this plugin only ever holds addresses: never
-passwords, API keys or addon links (those stay encrypted in each person's own Viewarr setup).
+Dispatcharr → Plugins → Import, and choose `viewarr-plugin-<version>.zip` from the releases. Enable it.
