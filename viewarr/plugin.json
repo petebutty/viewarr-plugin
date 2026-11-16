@@ -1,0 +1,33 @@
+{
+  "name": "Viewarr",
+  "version": "0.1.0",
+  "description": "House settings for Viewarr, the Android TV app for Dispatcharr: the outside addresses of your servers, read by every Viewarr when it starts.",
+  "author": "petebutty",
+  "license": "MIT",
+  "repo_url": "https://github.com/petebutty/viewarr-plugin",
+  "help_url": "https://github.com/petebutty/viewarr-plugin#readme",
+  "fields": [
+    {
+      "id": "about",
+      "label": "What this is",
+      "type": "info",
+      "help_text": "Viewarr reads these settings each time it starts, on every TV signed in to this Dispatcharr. Change an address here (or in Viewarr: Settings → Profiles → Away addresses) and every TV follows. Anyone signed in to Dispatcharr can read plugin settings, so only addresses belong here: never passwords, keys or addon links."
+    },
+    {
+      "id": "away",
+      "label": "Outside addresses",
+      "type": "text",
+      "default": "",
+      "help_text": "One per line: home address = outside address. For example: http://192.168.1.50:9191 = https://tv.example.com. A TV that can't reach the home address uses the outside one."
+    }
+  ],
+  "actions": [
+    {
+      "id": "check",
+      "label": "Check outside addresses",
+      "description": "Asks each outside address from this server and says which answer.",
+      "button_label": "Check",
+      "button_variant": "default"
+    }
+  ]
+}
