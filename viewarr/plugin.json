@@ -1,6 +1,6 @@
 {
   "name": "Viewarr",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "House settings for Viewarr, the Android TV app for Dispatcharr: the outside addresses of your servers, read by every Viewarr when it starts.",
   "author": "petebutty",
   "license": "MIT",
