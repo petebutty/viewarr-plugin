@@ -18,7 +18,7 @@
       "label": "Outside addresses",
       "type": "text",
       "default": "",
-      "help_text": "One per line: home address = outside address. For example: http://192.168.1.50:9191 = https://tv.example.com. A TV that can't reach the home address uses the outside one."
+      "help_text": "For self-hosted servers and addons on your home network, one per line: home address = outside address. For example: http://192.168.1.50:9191 = https://tv.example.com. A TV that can't reach the home address uses the outside one. Public addresses (public addon instances, or anything you already use by its own domain) work anywhere and don't need a line."
     }
   ],
   "actions": [
