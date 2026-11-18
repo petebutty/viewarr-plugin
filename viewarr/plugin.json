@@ -1,18 +1,57 @@
 {
   "name": "Viewarr",
-  "version": "0.3.0",
-  "description": "Backups of your Viewarr setup, kept on your Dispatcharr (Viewarr → Settings → Users & profiles → Backups).",
+  "version": "0.5.13",
+  "description": "The server half of Viewarr: does the sports and guide work once for the whole house, so every TV is quicker and keeps working with the TVs off.",
   "author": "petebutty",
   "license": "MIT",
   "repo_url": "https://github.com/petebutty/viewarr-plugin",
   "help_url": "https://github.com/petebutty/viewarr-plugin#readme",
+  "source_type": "external",
+  "source_url": "https://github.com/petebutty/viewarr-plugin/releases/download/v{version}/viewarr-plugin-{version}.zip",
   "fields": [
     {
       "id": "about",
-      "label": "What this is",
+      "label": "How it works with Viewarr",
       "type": "info",
-      "help_text": "Viewarr keeps backups of an admin's whole setup here (settings and sign-ins, the sign-ins encrypted with the admin's own Dispatcharr key). Save and restore them from Viewarr: Settings → Users & profiles → Backups. Only admins can reach them."
+      "help_text": "How it works with Viewarr: Viewarr works without this plugin, but then every TV does all the work itself. With it, Dispatcharr does that work once for the house, every 5 minutes, and leaves the answers in each person's own Dispatcharr storage; each TV just reads them.\n\nWhat it does:\n• Live now and Sports: which games are on, in the leagues and teams anyone follows, and which channel shows each (from Dispatcharr's guide, ESPN, the Sky schedule and UK football TV listings weeks ahead).\n• Recordings for sport: \"Record all <team>\" or Record on a game that isn't in the guide yet is made as soon as the guide lists it, even with every TV off.\n• Score alerts and live scores: kick-offs, goals and results, only for the teams each person switches alerts on for (off until they do, in Viewarr → Settings → Sports).\n• Title logos for the guide (with a TMDB key below).\n• Backups of an admin's Viewarr setup (Viewarr → Settings → Users & profiles → Backups).\n\nNothing needs setting up in Viewarr: a TV finds the plugin by itself. If the plugin stops, the TVs go back to doing the work themselves."
+    },
+    {
+      "id": "watch_about",
+      "label": "Watch sync (optional, without Trakt)",
+      "type": "info",
+      "help_text": "Optional, for people who don't use Trakt. When someone switches on Viewarr → Settings → Playback → Watch progress → \"Sync IPTV progress with my Emby / Jellyfin / Plex\", this keeps what they watched on IPTV in step with their own server every 5 minutes, matched by TMDB id: finish a film on IPTV and it's ticked in Plex. It only touches titles they've played on IPTV; things only watched on the server stay there. Their server sign-in comes from Viewarr and is kept in their own Dispatcharr storage, not on this page. If you use Trakt, leave it off: Trakt already does this."
+    },
+    {
+      "id": "live_groups",
+      "label": "Live now: extra channel groups to search",
+      "type": "text",
+      "default": "",
+      "help_text": "Where the plugin looks for live sport for Live now, for the whole house. It always searches groups whose names sound like sport (Sports, Football, Events, Box Office, EPL…) and Event Channel Managarr's groups if you use it. Add any others here, one per line or separated by commas, e.g. your provider's event-feed groups (UEFA, SOCCER, PDC). Use the names as Dispatcharr shows them. Easier: switch a group on in Viewarr → Settings → Live TV → Live now groups and the plugin searches it too (from the next round), so this box is only needed as a fallback. Each TV can also switch groups, sports and leagues off for itself there."
+    },
+    {
+      "id": "tmdb_key",
+      "label": "TMDB key (for title logos)",
+      "type": "text",
+      "default": "",
+      "help_text": "Your TMDB API key (or read token). With it, the plugin finds the title logos for everything in the next day's guide once for the whole house, so every TV shows them straight away. Leave empty to let each TV look them up itself."
     }
   ],
-  "actions": []
+  "actions": [
+    {
+      "id": "server_status",
+      "label": "Sports service status",
+      "description": "When it last worked out Live now and the games, and how much."
+    },
+    {
+      "id": "server_refresh",
+      "label": "Refresh sports now",
+      "description": "Work out Live now and the games straight away."
+    }
+  ],
+  "manifest_version": 1,
+  "capabilities": [
+    "persistent_service",
+    "outbound_network",
+    "user_data"
+  ]
 }

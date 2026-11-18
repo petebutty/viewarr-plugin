@@ -1,4 +1,4 @@
-"""Viewarr house settings for Dispatcharr.
+"""Viewarr house settings for Dispatcharr, and server-side sports (server.py, sports.py).
 
 Backups of an admin's whole Viewarr setup are kept in Dispatcharr's plugin data folder (admins only).
 
@@ -7,6 +7,7 @@ from /api/plugins/plugins/ when it starts. Admins change them here or from Viewa
 addresses). Only addresses are kept, never secrets.
 """
 
+import importlib.util
 import json
 import os
 import re
@@ -54,8 +55,72 @@ class Plugin:
     fields = _MANIFEST.get("fields", [])
     actions = _MANIFEST.get("actions", [])
 
+    # ---- Server-side sports (server.py): Live now and where to watch each game, worked out here every few minutes
+    # for the whole house and published to every user's app data, so the TVs don't each do it. Runs on the one
+    # Dispatcharr process holding the plugin's leadership (Dispatcharr 0.34.0+: the persistent_service capability).
+
+    _status_path = os.path.join(_DATA, "server_status.json")
+
+    def _server(self):
+        spec = importlib.util.spec_from_file_location("viewarr_server", os.path.join(_HERE, "server.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def _module(self, name):
+        spec = importlib.util.spec_from_file_location("viewarr_" + name, os.path.join(_HERE, name + ".py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def on_leader_acquired(self, context):
+        log = (context or {}).get("logger")
+        os.makedirs(_DATA, exist_ok=True)
+        server = self._server()
+        context["start_service"](lambda stop: server.service(stop, log=log, status_path=self._status_path), name="sports")
+
+    def on_leader_lost(self, context):
+        # (Dispatcharr stops the service itself; nothing else is held.)
+        return None
+
+    def _server_status(self):
+        try:
+            with open(self._status_path, encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception:
+            return {"status": "success", "message": "The sports service hasn't finished a round yet."}
+        if st.get("error"):
+            return {"status": "error", "message": "Last round failed: " + st["error"], "result": st}
+        when = time.strftime("%H:%M", time.localtime(st.get("at", 0)))
+        return {"status": "success", "result": st, "message":
+                f"Last round {when}: {st.get('live', 0)} live now, {st.get('games', 0)} games placed, "
+                f"{st.get('bytes', 0) // 1024} KB to {st.get('users', 0)} users in {st.get('seconds', 0)} s; "
+                f"{st.get('recorded', 0)} recordings made; "
+                f"{st.get('logos') if st.get('logos') is not None else 'no'} title logos known; "
+                f"watch sync: {(st.get('watch') or {}).get('users', 0)} users, {(st.get('watch') or {}).get('pulled', 0)} in, "
+                f"{(st.get('watch') or {}).get('pushed', 0)} out."}
+
+    def _server_refresh(self, context):
+        log = (context or {}).get("logger")
+        try:
+            st = self._server().publish(log)
+        except Exception as exc:
+            return {"status": "error", "message": f"Couldn't refresh: {exc}"}
+        try:
+            os.makedirs(_DATA, exist_ok=True)
+            with open(self._status_path, "w", encoding="utf-8") as f:
+                json.dump(st, f)
+        except Exception:
+            pass
+        return {"status": "success", "result": st,
+                "message": f"Refreshed: {st.get('live', 0)} live now, {st.get('games', 0)} games placed."}
+
     def run(self, action, params, context):
         params = params or {}
+        if action == "server_status":
+            return self._server_status()
+        if action == "server_refresh":
+            return self._server_refresh(context)
         if action == "check":
             return self._check((context or {}).get("settings") or {})
         if action == "backup_save":
@@ -137,7 +202,7 @@ class Plugin:
         bad = 0
         for home, away in pairs:
             try:
-                req = urllib.request.Request(away.rstrip("/") + "/", headers={"User-Agent": "Viewarr-plugin"})
+                req = urllib.request.Request(away.rstrip("/") + "/", headers={"User-Agent": "Viewarr-Plugin/0.5 (+https://github.com/petebutty/viewarr-plugin)"})
                 with urllib.request.urlopen(req, timeout=6) as r:
                     lines.append(f"{away}: answers ({r.status})")
             except urllib.error.HTTPError as e:
