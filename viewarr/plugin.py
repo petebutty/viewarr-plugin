@@ -1,4 +1,5 @@
-"""Viewarr house settings for Dispatcharr, and server-side sports (server.py, sports.py).
+"""Viewarr house settings for Dispatcharr, and server-side sports (server.py, sports.py), Best stream first
+(streamorder.py) and reports from the TVs (reports.py).
 
 Backups of an admin's whole Viewarr setup are kept in Dispatcharr's plugin data folder (admins only).
 
@@ -98,7 +99,77 @@ class Plugin:
                 f"{st.get('recorded', 0)} recordings made; "
                 f"{st.get('logos') if st.get('logos') is not None else 'no'} title logos known; "
                 f"watch sync: {(st.get('watch') or {}).get('users', 0)} users, {(st.get('watch') or {}).get('pulled', 0)} in, "
-                f"{(st.get('watch') or {}).get('pushed', 0)} out."}
+                f"{(st.get('watch') or {}).get('pushed', 0)} out; "
+                f"streams reordered: {(st.get('order') or {}).get('reordered', 0)} this round, "
+                f"{(st.get('order') or {}).get('week', 0)} this week; "
+                f"reports: {(st.get('reports') or {}).get('handled', 0)} handled, "
+                f"{(st.get('reports') or {}).get('applied', 0)} changes; "
+                f"measured: {self._measured_text(st.get('measured') or {})}."}
+
+    @staticmethod
+    def _measured_text(m):
+        left = m.get("left")
+        group = f" (on {m.get('group')})" if m.get("group") else ""
+        return f"{m.get('done_tonight', 0)} tonight, {m.get('failed', 0)} failed, {left if left is not None else '?'} left{group}"
+
+    def _measure_now(self, context):
+        """One batch of up to 20 probes straight away, ignoring the window but never the provider's spare line."""
+        settings = (context or {}).get("settings") or {}
+        log = (context or {}).get("logger")
+        try:
+            ms = self._module("measure")
+            res = ms.run_batch(_DATA, settings, ms.NOW_LIMIT, ignore_window=True, seconds=ms.NOW_SECONDS,
+                               log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+        except Exception as exc:
+            return {"status": "error", "message": f"Couldn't measure: {exc}"}
+        busy = "; the provider had no line free" if res["busy"] and not res["done"] else ""
+        return {"status": "success", "result": res,
+                "message": f"Measured {res['done']}, failed {res['failed']}, {res['left']} still to do{busy}."}
+
+    # ---- Best stream first and reports from the TVs (streamorder.py, reports.py), run by the service each round.
+
+    def _stream_order_plan(self):
+        """What Best stream first would change now, without changing anything (a dry run after a night's measuring)."""
+        try:
+            so = self._module("streamorder")
+            me = self._module("measure")
+            extra = {}
+            try:
+                extra = me.fails(_DATA)
+            except Exception:
+                pass
+            plan = so.plan(_DATA, extra_fails=extra)
+        except Exception as exc:
+            return {"status": "error", "message": f"Couldn't work out the order: {exc}"}
+        lines = [f"{x['name']}: {x['current_first']} -> {x['proposed_first']} (gain {x['gain']})"
+                 for x in sorted(plan, key=lambda x: -x["gain"])]
+        return {"status": "success", "result": {"count": len(plan), "changes": lines[:200]},
+                "message": f"{len(plan)} channel(s) would change. " + ("; ".join(lines[:25]) if lines else "")}
+
+    def _stream_order_reset(self):
+        try:
+            n = self._module("streamorder").reset(_DATA)
+        except Exception as exc:
+            return {"status": "error", "message": f"Couldn't put the order back: {exc}"}
+        return {"status": "success", "message": f"Stream order put back on {n} channel(s). If \"Best stream first\" "
+                                                f"stays on, the next round may move them again."}
+
+    def _undo_change(self, params, context):
+        # (Viewarr sends the id as a parameter; from Dispatcharr's own page, paste it into the "Change to undo" box.)
+        cid = str(params.get("id") or ((context or {}).get("settings") or {}).get("undo_id") or "").strip()
+        if not cid:
+            return {"status": "error", "message": "Which change? Give its id (see \"Recent changes from reports\")."}
+        try:
+            ok, msg = self._module("reports").undo(_DATA, cid)
+        except Exception as exc:
+            return {"status": "error", "message": f"Couldn't undo: {exc}"}
+        return {"status": "success" if ok else "error", "message": msg}
+
+    def _reports_status(self):
+        try:
+            return {"status": "success", "message": self._module("reports").status_text(_DATA)}
+        except Exception as exc:
+            return {"status": "error", "message": f"Couldn't read the change log: {exc}"}
 
     def _server_refresh(self, context):
         log = (context or {}).get("logger")
@@ -123,6 +194,16 @@ class Plugin:
             return self._server_refresh(context)
         if action == "check":
             return self._check((context or {}).get("settings") or {})
+        if action == "stream_order_plan":
+            return self._stream_order_plan()
+        if action == "stream_order_reset":
+            return self._stream_order_reset()
+        if action == "undo_change":
+            return self._undo_change(params, context)
+        if action == "reports_status":
+            return self._reports_status()
+        if action == "measure_now":
+            return self._measure_now(context)
         if action == "backup_save":
             return self._backup_save(params)
         if action == "backup_list":

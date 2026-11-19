@@ -333,15 +333,69 @@ def publish(log=None):
         recorded = 0
         if log:
             log.warning("Viewarr: team / game recordings failed: %s", exc)
+    # Reports from the TVs (reports.py) and Best stream first (streamorder.py): both house-wide, both their own file.
+    house = house_round(log)
     close_old_connections()
     status = {
         "recorded": recorded, "logos": logos_known, "watch": watch,
+        "order": house.get("order"), "reports": house.get("reports"), "measured": house.get("measured"),
         "at": result["at"], "seconds": round(time.time() - t0, 1), "bytes": size, "users": users,
         "live": len(result.get("live", [])), "games": len(result.get("games", {})),
     }
     if log:
         log.info("Viewarr server sports: %s", status)
     return status
+
+
+def _data_dir():
+    return os.path.join(os.path.dirname(_HERE), "_data", "viewarr")
+
+
+def house_round(log=None):
+    """Reports from the TVs acted on, then each channel's best stream put first (the dead reports feed it), then the
+    house-wide results published (viewarr_house). Each part is caught on its own: none of it may stop the sports."""
+    settings = {}
+    try:
+        settings = _own_settings()
+    except Exception:
+        pass
+    plain = (lambda m: log.info("Viewarr: %s", m)) if log else None
+    data_dir = _data_dir()
+    out = {"order": None, "reports": None}
+    rp = so = None
+    try:
+        rp = _module("reports")
+        out["reports"] = rp.run_round(data_dir, log=plain, auto=settings.get("reports_auto", True) is not False)
+    except Exception as exc:
+        if log:
+            log.warning("Viewarr: reports round failed: %s", exc)
+    try:
+        so = _module("streamorder")
+        if settings.get("stream_order", True) is not False:
+            # Failures the ranking should know about: dead reports from the TVs, and streams that failed three probes.
+            fails = dict(rp.dead_fails(data_dir)) if rp else {}
+            try:
+                for sid, times in _module("measure").fails(data_dir).items():
+                    fails.setdefault(sid, []).extend(times)
+            except Exception:
+                pass
+            out["order"] = so.run_round(data_dir, log=plain, extra_fails=fails)
+        else:
+            out["order"] = {"reordered": 0, "week": so.reordered_this_week(so.load_state(data_dir), time.time())}
+    except Exception as exc:
+        if log:
+            log.warning("Viewarr: best stream first failed: %s", exc)
+    try:
+        if rp:
+            rp.publish(rp.load_state(data_dir), (out["order"] or {}).get("week", 0))
+    except Exception as exc:
+        if log:
+            log.warning("Viewarr: house publish failed: %s", exc)
+    try:
+        out["measured"] = _module("measure").status(data_dir)
+    except Exception:
+        out["measured"] = None
+    return out
 
 
 _LAST_GAMES = {}
@@ -352,6 +406,14 @@ def service(stop_event, log=None, status_path=None):
     """The persistent service: a full round now, then every INTERVAL_S until Dispatcharr stops it; in between, while a
     game in the results is live (or about to kick off), a quick score check every QUICK_S for alerts (alerts.py)."""
     last_full = 0.0
+    # Measuring streams at night (measure.py) runs in its own thread: a probe can take 20 s, and this loop must keep
+    # its five-minute rhythm. It watches the same stop event and the plugin settings (window, on / off).
+    try:
+        _module("measure").start(stop_event, _data_dir(), _own_settings,
+                                 log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+    except Exception as exc:
+        if log:
+            log.warning("Viewarr: measuring thread didn't start: %s", exc)
     while not stop_event.is_set():
         if time.time() - last_full >= INTERVAL_S:
             last_full = time.time()
