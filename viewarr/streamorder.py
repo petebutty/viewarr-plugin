@@ -172,14 +172,27 @@ def quiet_groups():
     return names
 
 
+def tunarr_channel_ids():
+    """
+    Channels fed only by a Tunarr account (an M3U account named "Tunarr"): Tunarr runs on the owner's own server, so
+    when one of its channels won't play it's Tunarr that's down, never the stream (the owner, 2026-11-19).
+    """
+    from apps.channels.models import ChannelStream
+    ids, others = set(), set()
+    for cid, acc in ChannelStream.objects.values_list("channel_id", "stream__m3u_account__name"):
+        (ids if "tunarr" in (acc or "").lower() else others).add(cid)
+    return ids - others
+
+
 def quiet_channel_ids(groups=None):
-    """The ids of every channel in the quiet groups."""
+    """The ids of every channel in the quiet groups, and every Tunarr channel wherever it's grouped."""
     from apps.channels.models import Channel
     groups = quiet_groups() if groups is None else groups
-    if not groups:
-        return []
-    return [c.id for c in Channel.objects.select_related("channel_group").only("id", "channel_group__name")
-            if (getattr(c.channel_group, "name", "") or "").strip().lower() in groups]
+    out = set(tunarr_channel_ids())
+    if groups:
+        out |= {c.id for c in Channel.objects.select_related("channel_group").only("id", "channel_group__name")
+                if (getattr(c.channel_group, "name", "") or "").strip().lower() in groups}
+    return sorted(out)
 
 
 def keep_order(channel, state):

@@ -138,9 +138,18 @@ def match_guide(channel):
     for e in EPGData.objects.select_related("epg_source").only("id", "name", "epg_source__name", "epg_source__is_active"):
         if e.epg_source_id == current_source or not (e.epg_source and e.epg_source.is_active):
             continue
-        if norm_name(e.name) == want:
+        if norm_name(e.name) == want and has_listings(e.id):
             found.append(e)
     return found[0] if len(found) == 1 else None
+
+
+def has_listings(epg_id):
+    """True when the guide entry has programmes in the coming day (an empty entry is no fix for a wrong guide)."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from apps.epg.models import ProgramData
+    now = timezone.now()
+    return ProgramData.objects.filter(epg_id=epg_id, end_time__gt=now, start_time__lt=now + timedelta(hours=24)).exists()
 
 
 def _set_guide(state, item, by, channel, epg, log):
@@ -188,14 +197,20 @@ def _guide_times(state, item, by, channel, log):
 
 
 def _dead(state, item, by, channel, log):
-    from apps.channels.models import Stream
+    from apps.channels.models import Stream, ChannelStream
     sid = item.get("stream_id")
     if not isinstance(sid, int):
-        return False
+        # The TV couldn't tell which stream it was on (it never started, so Dispatcharr's status had none): the
+        # channel's first stream is what Dispatcharr would have served.
+        first = ChannelStream.objects.filter(channel=channel).order_by("order", "id").values_list("stream_id", flat=True).first()
+        if first is None:
+            return False
+        sid = int(first)
+    so = _streamorder()
     group = (getattr(channel.channel_group, "name", "") or "").strip().lower()
-    if group in _streamorder().quiet_groups():
+    if group in so.quiet_groups() or channel.id in so.tunarr_channel_ids():
         if log:
-            log("reports: %s: %s is in a quiet group (%s): off air isn't a fault, nothing changed" % (by, channel.name, group))
+            log("reports: %s: %s is a quiet or Tunarr channel: not playing isn't the stream's fault, nothing changed" % (by, channel.name))
         return False
     stream = Stream.objects.filter(id=sid).only("name").first()
     at = int(item["at"])
