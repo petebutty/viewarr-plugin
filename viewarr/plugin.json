@@ -1,6 +1,6 @@
 {
   "name": "Viewarr",
-  "version": "0.6.0",
+  "version": "0.6.2",
   "description": "The server half of Viewarr: does the sports and guide work once for the whole house, puts each channel's best stream first, acts on reports from the TVs, so every TV is quicker and keeps working with the TVs off.",
   "author": "petebutty",
   "license": "MIT",
@@ -13,7 +13,7 @@
       "id": "about",
       "label": "How it works with Viewarr",
       "type": "info",
-      "help_text": "How it works with Viewarr: Viewarr works without this plugin, but then every TV does all the work itself. With it, Dispatcharr does that work once for the house, every 5 minutes, and leaves the answers in each person's own Dispatcharr storage; each TV just reads them.\n\nWhat it does:\n• Live now and Sports: which games are on, in the leagues and teams anyone follows, and which channel shows each (from Dispatcharr's guide, ESPN, the Sky schedule and UK football TV listings weeks ahead).\n• Recordings for sport: \"Record all <team>\" or Record on a game that isn't in the guide yet is made as soon as the guide lists it, even with every TV off.\n• Score alerts and live scores: kick-offs, goals and results, only for the teams each person switches alerts on for (off until they do, in Viewarr → Settings → Sports).\n• Best stream first: each channel's best stream (FHD before HD before SD; streams that keep failing on the TVs drop down) is put first in Dispatcharr, so every app and TV starts on it.\n• Reports from the TVs: wrong guide, guide times out, dead stream, wrong logo or name, reported from Viewarr and applied straight away; each change can be undone.\n• Measuring streams at night: each stream's real picture size and codec, checked with ffprobe in a quiet window, one at a time, always leaving the provider a line for watching.\n• Title logos for the guide (with a TMDB key below).\n• Backups of an admin's Viewarr setup (Viewarr → Settings → Users & profiles → Backups).\n\nNothing needs setting up in Viewarr: a TV finds the plugin by itself. If the plugin stops, the TVs go back to doing the work themselves."
+      "help_text": "How it works with Viewarr: Viewarr works without this plugin, but then every TV does all the work itself. With it, Dispatcharr does that work once for the house, every 5 minutes, and leaves the answers in each person's own Dispatcharr storage; each TV just reads them.\n\nWhat it does:\n• Live now and Sports: which games are on, in the leagues and teams anyone follows, and which channel shows each (from Dispatcharr's guide, ESPN, the Sky schedule and UK football TV listings weeks ahead).\n• Recordings for sport: \"Record all <team>\" or Record on a game that isn't in the guide yet is made as soon as the guide lists it, even with every TV off.\n• Score alerts and live scores: kick-offs, goals and results, only for the teams each person switches alerts on for (off until they do, in Viewarr → Settings → Sports).\n• Best stream first: each channel's best stream (FHD before HD before SD; streams that keep failing on the TVs drop down) is put first in Dispatcharr, so every app and TV starts on it.\n• Just added: what arrived on each streaming service in the UK in the last fortnight (films, and new seasons of shows), once a day from JustWatch, for Viewarr's \"<service> · Just added\" rows.\n• Reports from the TVs: wrong guide, guide times out, dead stream, wrong logo or name, reported from Viewarr and applied straight away; each change can be undone.\n• Measuring streams at night: each stream's real picture size and codec, checked with ffprobe in a quiet window, one at a time, always leaving the provider a line for watching.\n• Backups of an admin's Viewarr setup (Viewarr → Settings → Users & profiles → Backups).\n\nNothing needs setting up in Viewarr: a TV finds the plugin by itself. If the plugin stops, the TVs go back to doing the work themselves."
     },
     {
       "id": "watch_about",
@@ -27,13 +27,6 @@
       "type": "text",
       "default": "",
       "help_text": "Where the plugin looks for live sport for Live now, for the whole house. It always searches groups whose names sound like sport (Sports, Football, Events, Box Office, EPL…) and Event Channel Managarr's groups if you use it. Add any others here, one per line or separated by commas, e.g. your provider's event-feed groups (UEFA, SOCCER, PDC). Use the names as Dispatcharr shows them. Easier: switch a group on in Viewarr → Settings → Live TV → Live now groups and the plugin searches it too (from the next round), so this box is only needed as a fallback. Each TV can also switch groups, sports and leagues off for itself there."
-    },
-    {
-      "id": "tmdb_key",
-      "label": "TMDB key (for title logos)",
-      "type": "text",
-      "default": "",
-      "help_text": "Your TMDB API key (or read token). With it, the plugin finds the title logos for everything in the next day's guide once for the whole house, so every TV shows them straight away. Leave empty to let each TV look them up itself."
     },
     {
       "id": "stream_order",

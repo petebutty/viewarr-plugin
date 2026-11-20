@@ -15,6 +15,7 @@ If the plugin is missing or stops, the TVs go back to doing the work themselves.
 
 - **Best stream first.** For every channel with more than one stream, the best stream is put first in Dispatcharr, so every app and TV in the house starts on it. See [Best stream first](#best-stream-first).
 - **Measuring streams (at night).** Every stream's real picture size and codec, measured with ffprobe in a quiet window so the ranking uses facts rather than name tags. See [Measuring streams](#measuring-streams).
+- **Just added.** Once a day it reads what arrived on each streaming service in the UK over the last fortnight (older films newly added, and new seasons of shows), from JustWatch's web feed, and hands it to every TV for Viewarr's "<service> · Just added" rows. TMDB can't do this: it knows which service has a title, not when it arrived.
 - **Reports from the TVs.** Wrong guide, guide times out, dead stream, wrong logo or name, reported from Viewarr, are fixed straight away and can be undone. See [Reports from the TV](#reports-from-the-tv).
 - **Live now.** It goes through your guide and sports and event groups, and keeps only real live sport:
   - entries the guide marks as live;
@@ -24,7 +25,6 @@ If the plugin is missing or stops, the TVs go back to doing the work themselves.
   Each TV then applies its own choices: groups, sports, leagues and "Only what I follow".
 - **Where every followed game is on.** It collects the teams and leagues anyone in the house follows, then gets their fixtures and scores from ESPN. For each game it works out which of your channels shows it (see [UK football on TV](#uk-football-on-tv)). This feeds Viewarr's Sports page, the game cards and **Watch**.
 - **Sport recordings.** For **Record all &lt;team&gt;**, or **Record** on a game the guide doesn't list yet, it creates the recording in Dispatcharr as soon as the guide lists the game. This works even with every TV off.
-- **Title logos.** With a TMDB key, it finds the show and film logos for the next day's guide, about 250 new titles a round. Every TV gets them without looking them up itself.
 - **Watch sync (optional, for people without Trakt).** It keeps someone's IPTV watch progress in step with their own Emby, Jellyfin or Plex, in both directions, matched by TMDB id. Finish a film on IPTV and it's ticked in Plex.
   - It only touches titles they've played on IPTV.
   - Each person switches it on for themselves in Viewarr → Settings → Playback → Watch progress.
@@ -122,7 +122,6 @@ That's it. Nobody needs to set anything up in Viewarr: each TV finds the plugin 
 | **Measure these channel groups first** | Channel groups in priority order; the rest follow alphabetically. |
 | **Measure only the listed groups** | Off by default. On: skip every other group. |
 | **Provider to measure first** | M3U account name; empty means the one with the most left. |
-| **TMDB key (for title logos)** | Your TMDB API key or read token. Without it, each TV looks up title logos itself. Note: any signed-in Dispatcharr user can read plugin settings, so use a key you don't mind sharing with your household. |
 
 ## Polite to the sources
 

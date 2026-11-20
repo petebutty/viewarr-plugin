@@ -97,7 +97,6 @@ class Plugin:
                 f"Last round {when}: {st.get('live', 0)} live now, {st.get('games', 0)} games placed, "
                 f"{st.get('bytes', 0) // 1024} KB to {st.get('users', 0)} users in {st.get('seconds', 0)} s; "
                 f"{st.get('recorded', 0)} recordings made; "
-                f"{st.get('logos') if st.get('logos') is not None else 'no'} title logos known; "
                 f"watch sync: {(st.get('watch') or {}).get('users', 0)} users, {(st.get('watch') or {}).get('pulled', 0)} in, "
                 f"{(st.get('watch') or {}).get('pushed', 0)} out; "
                 f"streams reordered: {(st.get('order') or {}).get('reordered', 0)} this round, "

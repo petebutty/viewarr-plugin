@@ -31,7 +31,7 @@ _MODULES = {}
 
 
 def _module(name):
-    """Another file beside this one (logos.py…), loaded once and kept (its caches last between rounds)."""
+    """Another file beside this one (sports.py…), loaded once and kept (its caches last between rounds)."""
     if name not in _MODULES:
         spec = importlib.util.spec_from_file_location("viewarr_" + name, os.path.join(_HERE, name + ".py"))
         mod = importlib.util.module_from_spec(spec)
@@ -76,12 +76,50 @@ def _channels():
     return out
 
 
-def _programmes_for(channels):
-    """The guide reader handed to sports.compute: a channel's programmes between two times, from the database."""
-    from datetime import datetime, timezone
+# The guide's programmes, kept between rounds (Peter, 2026-11-20: every round read ~145,000 programmes again, 8-25 s).
+# Only what changed is read: a new guide refresh (a source's updated_at / message, or new programme rows) starts the
+# copy again; otherwise only a stretch of time not read yet is fetched. Read again in full every 30 minutes anyway, in
+# case something edited programmes in place.
+_PC = {"stamp": None, "lo": None, "hi": None, "rows": {}, "at": 0.0, "read": 0}
+
+
+def _guide_stamp():
+    from django.db.models import Max
+    from apps.epg.models import EPGSource, ProgramData
+    src = tuple(EPGSource.objects.order_by("id").values_list("id", "updated_at", "last_message"))
+    return (src, ProgramData.objects.aggregate(m=Max("id"))["m"])
+
+
+def _read_programmes(epg_ids, **where):
     from apps.epg.models import ProgramData
+    rows = ProgramData.objects.filter(epg_id__in=epg_ids, **where).only(
+        "epg_id", "title", "sub_title", "description", "start_time", "end_time", "custom_properties"
+    )
+    n = 0
+    for p in rows.iterator(chunk_size=2000):
+        cp = p.custom_properties if isinstance(p.custom_properties, dict) else {}
+        _PC["rows"].setdefault(p.epg_id, []).append((
+            int(p.start_time.timestamp()), int(p.end_time.timestamp()), p.title or "", p.sub_title, p.description,
+            bool(cp.get("live")), cp.get("icon"),
+        ))
+        n += 1
+    _PC["read"] += n
+
+
+def _programmes_for(channels):
+    """The guide reader handed to sports.compute: a channel's programmes between two times (kept between rounds)."""
+    from datetime import datetime, timezone
 
     epg_of = {c["id"]: c["_epg"] for c in channels if c.get("_epg")}
+    every_epg = sorted(set(epg_of.values()))
+    utc = lambda s: datetime.fromtimestamp(s, timezone.utc)
+    _PC["read"] = 0
+    try:
+        stamp = (_guide_stamp(), tuple(every_epg))
+    except Exception:
+        stamp = None
+    if stamp is None or stamp != _PC["stamp"] or time.time() - _PC["at"] > 1800:
+        _PC.update(stamp=stamp, lo=None, hi=None, rows={}, at=time.time())  # (logos_cleared kept)
 
     def programmes(channel_ids, start_s, end_s):
         wanted = {}
@@ -91,25 +129,52 @@ def _programmes_for(channels):
                 wanted.setdefault(e, []).append(cid)
         if not wanted:
             return []
-        start = datetime.fromtimestamp(start_s, timezone.utc)
-        end = datetime.fromtimestamp(end_s, timezone.utc)
-        rows = ProgramData.objects.filter(epg_id__in=list(wanted), end_time__gt=start, start_time__lt=end).only(
-            "epg_id", "title", "sub_title", "description", "start_time", "end_time", "custom_properties"
-        )
+        # Fill in the stretch not read yet, for every channel at once (later asks are then answered from memory).
+        if _PC["lo"] is None:
+            _read_programmes(every_epg, end_time__gt=utc(start_s), start_time__lt=utc(end_s))
+            _PC["lo"], _PC["hi"] = start_s, end_s
+        else:
+            if start_s < _PC["lo"]:
+                _read_programmes(every_epg, end_time__gt=utc(start_s), end_time__lte=utc(_PC["lo"]))
+                _PC["lo"] = start_s
+            if end_s > _PC["hi"]:
+                _read_programmes(every_epg, start_time__gte=utc(_PC["hi"]), start_time__lt=utc(end_s))
+                _PC["hi"] = end_s
         out = []
-        for p in rows.iterator(chunk_size=2000):
-            cp = p.custom_properties or {}
-            live = bool(cp.get("live")) if isinstance(cp, dict) else False
-            image = cp.get("icon") if isinstance(cp, dict) else None
-            for cid in wanted.get(p.epg_id, ()):
-                out.append({
-                    "channel_id": cid, "title": p.title or "", "sub_title": p.sub_title, "description": p.description,
-                    "start_s": int(p.start_time.timestamp()), "end_s": int(p.end_time.timestamp()),
-                    "is_live": live, "image": image,
-                })
+        for e, cids in wanted.items():
+            for (st, en, title, sub, desc, live, image) in _PC["rows"].get(e, ()):
+                if en > start_s and st < end_s:
+                    for cid in cids:
+                        out.append({
+                            "channel_id": cid, "title": title, "sub_title": sub, "description": desc,
+                            "start_s": st, "end_s": en, "is_live": live, "image": image,
+                        })
         return out
 
+    # What's long over is let go (the copy only ever needs from a few hours ago).
+    cut = int(time.time()) - 12 * 3600
+    if _PC["lo"] is not None and _PC["lo"] < cut:
+        for e in list(_PC["rows"]):
+            _PC["rows"][e] = [r for r in _PC["rows"][e] if r[1] > cut]
+        _PC["lo"] = cut
     return programmes
+
+
+def _forget_title_logos(log=None):
+    if _PC.get("logos_cleared"):
+        return
+    try:
+        from apps.accounts.models import UserAppData
+        n = UserAppData.objects.filter(key__startswith="viewarr_logos").delete()[0]
+        path = os.path.join(os.path.dirname(_HERE), "_data", "viewarr", "logo_cache.json")
+        if os.path.exists(path):
+            os.remove(path)
+        _PC["logos_cleared"] = True
+        if log and n:
+            log.info("Viewarr: title logos removed (%d stored parts cleared)", n)
+    except Exception as exc:
+        if log:
+            log.warning("Viewarr: couldn't clear the old title logos: %s", exc)
 
 
 def _followed():
@@ -304,20 +369,17 @@ def publish(log=None):
     for user in get_user_model().objects.filter(is_active=True).only("id"):
         UserAppData.objects.update_or_create(user=user, key=APP_KEY, defaults={"value": result, "byte_size": size})
         users += 1
-    # Stage 4: title logos for the next day's guide, a few hundred new titles a round (needs the TMDB key setting).
-    logos_known = None
+    # Programme title logos were removed (Peter, 2026-11-20: not needed for the guide; ~72,000 TMDB lookups a day).
+    # What they left behind is cleared once: the parts in each user's app data and the lookup file.
+    _forget_title_logos(log)
+    # What's just arrived on each streaming service (justadded.py, JustWatch): once a day, for Viewarr's
+    # "<service> · Just added" rows.
+    just = None
     try:
-        settings = _own_settings()
-        tmdb_key = (settings.get("tmdb_key") or "").strip()
-        lg = _module("logos")
-        data_dir = os.path.join(os.path.dirname(_HERE), "_data", "viewarr")
-        found = lg.run_round(data_dir, tmdb_key, log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
-        if tmdb_key or found:
-            lg.publish(found)
-        logos_known = len(found)
+        just = _module("justadded").run(_data_dir(), log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
     except Exception as exc:
         if log:
-            log.warning("Viewarr: title logos round failed: %s", exc)
+            log.warning("Viewarr: just added failed: %s", exc)
     # IPTV watch progress kept in step with each user's Emby / Jellyfin (watchsync.py), for users who switched it on.
     watch = None
     try:
@@ -337,7 +399,7 @@ def publish(log=None):
     house = house_round(log)
     close_old_connections()
     status = {
-        "recorded": recorded, "logos": logos_known, "watch": watch,
+        "recorded": recorded, "watch": watch, "just_added": just,
         "order": house.get("order"), "reports": house.get("reports"), "measured": house.get("measured"),
         "at": result["at"], "seconds": round(time.time() - t0, 1), "bytes": size, "users": users,
         "live": len(result.get("live", [])), "games": len(result.get("games", {})),
