@@ -61,13 +61,17 @@ _UUID = re.compile(r"^[A-Za-z0-9_-]{8,80}$")
 
 
 def _popen():
-    """The standard library's Popen, not gevent's patched one (this runs on a native thread, not the hub)."""
+    """The standard library's Popen where gevent keeps it, else subprocess.Popen as the measuring thread uses (in a
+    restarted Dispatcharr gevent's get_original returned None here, and every start failed)."""
+    import subprocess
     try:
         from gevent import monkey
-        return monkey.get_original("subprocess", "Popen")
+        original = monkey.get_original("subprocess", "Popen")
+        if callable(original):
+            return original
     except Exception:
-        import subprocess
-        return subprocess.Popen
+        pass
+    return subprocess.Popen
 
 
 def settings_of(settings):
@@ -235,6 +239,7 @@ class Manager:
         self.data_dir = data_dir
         self.log_dir = os.path.join(data_dir, "timeshift")
         self.settings_fn = settings_fn
+        self.failed_until = {}
         self.log = log or (lambda m: None)
         self.buffers = {}
         self.refused = {}
@@ -328,6 +333,9 @@ class Manager:
         for uuid in sorted(wanted, key=lambda u: u not in self.buffers):
             b = self.buffers.get(uuid)
             if b is None:
+                # (After a failed start, that channel waits a minute before trying again: no start every second.)
+                if time.time() < self.failed_until.get(uuid, 0):
+                    continue
                 why = self._refuse_reason()
                 if why:
                     if self.refused.get(uuid) != why:
@@ -339,6 +347,7 @@ class Manager:
                 try:
                     b.spawn(self.log_dir)
                 except Exception as exc:
+                    self.failed_until[uuid] = time.time() + 60
                     self.refused[uuid] = "ffmpeg didn't start"
                     self.log("timeshift: couldn't start ffmpeg for %s: %s" % (uuid, exc))
                     b.kill()
