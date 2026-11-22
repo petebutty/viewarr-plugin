@@ -1,6 +1,6 @@
 {
   "name": "Viewarr",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "The server half of Viewarr: does the sports and guide work once for the whole house, puts each channel's best stream first, acts on reports from the TVs, so every TV is quicker and keeps working with the TVs off.",
   "author": "petebutty",
   "license": "MIT",
@@ -13,7 +13,7 @@
       "id": "about",
       "label": "How it works with Viewarr",
       "type": "info",
-      "help_text": "How it works with Viewarr: Viewarr works without this plugin, but then every TV does all the work itself. With it, Dispatcharr does that work once for the house, every 5 minutes, and leaves the answers in each person's own Dispatcharr storage; each TV just reads them.\n\nWhat it does:\n• Live now and Sports: which games are on, in the leagues and teams anyone follows, and which channel shows each (from Dispatcharr's guide, ESPN, the Sky schedule and UK football TV listings weeks ahead).\n• Recordings for sport: \"Record all <team>\" or Record on a game that isn't in the guide yet is made as soon as the guide lists it, even with every TV off.\n• Score alerts and live scores: kick-offs, goals and results, only for the teams each person switches alerts on for (off until they do, in Viewarr → Settings → Sports).\n• Best stream first: each channel's best stream (FHD before HD before SD; streams that keep failing on the TVs drop down) is put first in Dispatcharr, so every app and TV starts on it.\n• Just added: what arrived on each streaming service in the UK in the last fortnight (films, and new seasons of shows), once a day from JustWatch, for Viewarr's \"<service> · Just added\" rows.\n• Reports from the TVs: wrong guide, guide times out, dead stream, wrong logo or name, reported from Viewarr and applied straight away; each change can be undone.\n• Measuring streams at night: each stream's real picture size and codec, checked with ffprobe in a quiet window, one at a time, always leaving the provider a line for watching.\n• Live timeshift: pause, rewind and fast-forward any live channel, from a buffer kept here while it's watched.\n• Backups of an admin's Viewarr setup (Viewarr → Settings → Users & profiles → Backups).\n\nEach of these can be switched off below (or from Viewarr → Settings → Plugins → Viewarr); it's then off for the whole house and Viewarr hides it. Nothing needs setting up in Viewarr: a TV finds the plugin by itself. If the plugin stops, the TVs go back to doing the work themselves."
+      "help_text": "How it works with Viewarr: Viewarr works without this plugin, but then every TV does all the work itself. With it, Dispatcharr does that work once for the house, every 5 minutes, and leaves the answers in each person's own Dispatcharr storage; each TV just reads them.\n\nWhat it does:\n\u2022 Live now and Sports: which games are on, in the leagues and teams anyone follows, and which channel shows each (from Dispatcharr's guide, ESPN, the Sky schedule and UK football TV listings weeks ahead).\n\u2022 Recordings for sport: \"Record all <team>\" or Record on a game that isn't in the guide yet is made as soon as the guide lists it, even with every TV off.\n\u2022 Score alerts and live scores: kick-offs, goals and results, only for the teams each person switches alerts on for (off until they do, in Viewarr \u2192 Settings \u2192 Sports).\n\u2022 Best stream first: each channel's best stream (FHD before HD before SD; streams that keep failing on the TVs drop down) is put first in Dispatcharr, so every app and TV starts on it.\n\u2022 Just added: what arrived on each streaming service in the UK in the last fortnight (films, and new seasons of shows), once a day from JustWatch, for Viewarr's \"<service> \u00b7 Just added\" rows.\n\u2022 Reports from the TVs: wrong guide, guide times out, dead stream, wrong logo or name, reported from Viewarr and applied straight away; each change can be undone.\n\u2022 Measuring streams at night: each stream's real picture size and codec, checked with ffprobe in a quiet window, one at a time, always leaving the provider a line for watching.\n\u2022 Live timeshift: pause, rewind and fast-forward any live channel, from a buffer kept here while it's watched.\n\u2022 Backups of an admin's Viewarr setup (Viewarr \u2192 Settings \u2192 Users & profiles \u2192 Backups).\n\nEach of these can be switched off below (or from Viewarr \u2192 Settings \u2192 Plugins \u2192 Viewarr); it's then off for the whole house and Viewarr hides it. Nothing needs setting up in Viewarr: a TV finds the plugin by itself. If the plugin stops, the TVs go back to doing the work themselves."
     },
     {
       "id": "live_now",
@@ -27,7 +27,7 @@
       "label": "Live now: extra channel groups to search",
       "type": "text",
       "default": "",
-      "help_text": "Where the plugin looks for live sport for Live now, for the whole house. It always searches groups whose names sound like sport (Sports, Football, Events, Box Office, EPL…) and Event Channel Managarr's groups if you use it. Add any others here, one per line or separated by commas, e.g. your provider's event-feed groups (UEFA, SOCCER, PDC). Use the names as Dispatcharr shows them. Easier: switch a group on in Viewarr → Settings → Live TV → Live now groups and the plugin searches it too (from the next round), so this box is only needed as a fallback. Each TV can also switch groups, sports and leagues off for itself there."
+      "help_text": "Where the plugin looks for live sport for Live now, for the whole house. It always searches groups whose names sound like sport (Sports, Football, Events, Box Office, EPL\u2026) and Event Channel Managarr's groups if you use it. Add any others here, one per line or separated by commas, e.g. your provider's event-feed groups (UEFA, SOCCER, PDC). Use the names as Dispatcharr shows them. Easier: switch a group on in Viewarr \u2192 Settings \u2192 Live TV \u2192 Live now groups and the plugin searches it too (from the next round), so this box is only needed as a fallback. Each TV can also switch groups, sports and leagues off for itself there."
     },
     {
       "id": "followed_games",
@@ -48,27 +48,27 @@
       "label": "Score alerts and live scores",
       "type": "boolean",
       "default": true,
-      "help_text": "Kick-offs, goals and results checked every 45 seconds while a followed game is on, for the alert banner and the ticker's Live scores (each person still chooses their teams in Viewarr → Settings → Sports). Needs \"Followed games\" on. Off: switched off for the whole house, and Viewarr hides it."
+      "help_text": "Kick-offs, goals and results checked every 45 seconds while a followed game is on, for the alert banner and the ticker's Live scores (each person still chooses their teams in Viewarr \u2192 Settings \u2192 Sports). Needs \"Followed games\" on. Off: switched off for the whole house, and Viewarr hides it."
     },
     {
       "id": "event_channels",
       "label": "Event channels: only with a listing",
       "type": "boolean",
       "default": true,
-      "help_text": "Tells the TVs which channels are event channels (the plugin's event groups), so Viewarr can hide those with nothing listed now or in the next 24 hours (each person's Settings → Live TV → Event channels). Off: every event channel is always shown, and Viewarr hides the option."
+      "help_text": "Tells the TVs which channels are event channels (the plugin's event groups), so Viewarr can hide those with nothing listed now or in the next 24 hours (each person's Settings \u2192 Live TV \u2192 Event channels). Off: every event channel is always shown, and Viewarr hides the option."
     },
     {
       "id": "just_added",
       "label": "Just added (JustWatch)",
       "type": "boolean",
       "default": true,
-      "help_text": "What arrived on each streaming service in the UK in the last fortnight, fetched once a day from JustWatch for Viewarr's \"<service> · Just added\" rows. Off: switched off for the whole house, and Viewarr hides it."
+      "help_text": "What arrived on each streaming service in the UK in the last fortnight, fetched once a day from JustWatch for Viewarr's \"<service> \u00b7 Just added\" rows. Off: switched off for the whole house, and Viewarr hides it."
     },
     {
       "id": "watch_about",
       "label": "IPTV progress sync (optional, without Trakt)",
       "type": "info",
-      "help_text": "Optional, for people who don't use Trakt. When someone switches on Viewarr → Settings → Playback → Watch progress → \"Sync IPTV progress with my Emby / Jellyfin / Plex\", this keeps what they watched on IPTV in step with their own server every 5 minutes, matched by TMDB id: finish a film on IPTV and it's ticked in Plex. It only touches titles they've played on IPTV; things only watched on the server stay there. Their server sign-in comes from Viewarr and is kept in their own Dispatcharr storage, not on this page. If you use Trakt, leave it off: Trakt already does this."
+      "help_text": "Optional, for people who don't use Trakt. When someone switches on Viewarr \u2192 Settings \u2192 Playback \u2192 Watch progress \u2192 \"Sync IPTV progress with my Emby / Jellyfin / Plex\", this keeps what they watched on IPTV in step with their own server every 5 minutes, matched by TMDB id: finish a film on IPTV and it's ticked in Plex. It only touches titles they've played on IPTV; things only watched on the server stay there. Their server sign-in comes from Viewarr and is kept in their own Dispatcharr storage, not on this page. If you use Trakt, leave it off: Trakt already does this."
     },
     {
       "id": "watch_sync",
@@ -146,7 +146,7 @@
       "label": "Live timeshift (pause and rewind live TV)",
       "type": "boolean",
       "default": true,
-      "help_text": "While a TV watches a channel, the last couple of hours of it are kept on this server, so Viewarr can pause, rewind and fast-forward any channel, not only ones with catch-up. One copy per channel, shared by every TV watching it, taken from Dispatcharr's own stream, so it uses no extra provider connection. It stops a minute after the last TV leaves the channel (at once when a TV changes channel) and the files are deleted. Each person can still switch it off for themselves in Viewarr → Settings → Live TV. Off: switched off for the whole house, and Viewarr hides it."
+      "help_text": "While a TV watches a channel, the last couple of hours of it are kept on this server, so Viewarr can pause, rewind and fast-forward any channel, not only ones with catch-up. One copy per channel, shared by every TV watching it, taken from Dispatcharr's own stream, so it uses no extra provider connection. It stops a minute after the last TV leaves the channel (at once when a TV changes channel) and the files are deleted. Each person can still switch it off for themselves in Viewarr \u2192 Settings \u2192 Live TV. Off: switched off for the whole house, and Viewarr hides it."
     },
     {
       "id": "timeshift_window",
@@ -211,11 +211,28 @@
       "help_text": "At most this many channels are buffered at the same time; a TV on another channel then has catch-up (if the channel has it) or live TV only, as without the plugin."
     },
     {
+      "id": "timeshift_storage",
+      "label": "Live timeshift: buffer folder",
+      "type": "select",
+      "default": "data",
+      "options": [
+        {
+          "value": "data",
+          "label": "Dispatcharr's data folder"
+        },
+        {
+          "value": "recordings",
+          "label": "TV recordings folder (hidden .viewarr-timeshift)"
+        }
+      ],
+      "help_text": "Where the rolling copies are kept while someone watches. The recordings folder is Dispatcharr's /data/recordings (your recordings share). Changes once no channel is being buffered."
+    },
+    {
       "id": "backups",
       "label": "Backups",
       "type": "boolean",
       "default": true,
-      "help_text": "Lets admins save and restore their Viewarr setup here (Viewarr → Settings → Users & profiles → Backups). Off: Viewarr hides Backups; the ones already saved are kept."
+      "help_text": "Lets admins save and restore their Viewarr setup here (Viewarr \u2192 Settings \u2192 Users & profiles \u2192 Backups). Off: Viewarr hides Backups; the ones already saved are kept."
     }
   ],
   "actions": [
@@ -257,7 +274,7 @@
     {
       "id": "measure_now",
       "label": "Measure streams now",
-      "description": "One batch of up to 20 streams straight away, ignoring the window (up to about 2½ minutes). A provider's spare line is still respected: nothing is probed while that would take the last line."
+      "description": "One batch of up to 20 streams straight away, ignoring the window (up to about 2\u00bd minutes). A provider's spare line is still respected: nothing is probed while that would take the last line."
     }
   ],
   "manifest_version": 1,

@@ -137,6 +137,7 @@ That's it. Nobody needs to set anything up in Viewarr: each TV finds the plugin 
 | **Live timeshift (pause and rewind live TV)** | On by default. Keeps a buffer of each channel being watched; see above. Off: Viewarr hides it. |
 | **Live timeshift: buffer length** | How far back a TV can rewind: 30 minutes to 4 hours, default 2 hours. An HD channel takes about 3 GB an hour on `/data` while it's watched. |
 | **Live timeshift: channels at once** | Default 3. Beyond it a TV has catch-up (if the channel has it) or live only. |
+| Live timeshift: buffer folder | Dispatcharr's data folder (default), or the TV recordings folder (`/data/recordings/.viewarr-timeshift`, hidden from Plex/Jellyfin). Changes once nothing is being buffered. |
 | **Backups** | On by default. Off: Viewarr hides Backups and the plugin refuses them; saved ones are kept. |
 
 Every function can be switched on or off, and its options set, from Viewarr itself (Settings → Plugins → Viewarr, admins). The plugin tells the TVs which functions are on (`functions` in `viewarr_server`); while one is off it's off for the whole house and Viewarr hides it. Only with no plugin at all do the TVs do these jobs themselves, as before.

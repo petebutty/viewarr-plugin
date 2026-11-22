@@ -36,6 +36,10 @@ VERSION = 1
 
 ROOT = "/data/logos/viewarr-ts"
 URL_BASE = "/logos/viewarr-ts"
+# Where the buffer files really live (setting "timeshift_storage"): Dispatcharr's own data folder (ROOT itself), or a
+# hidden folder in the recordings folder, linked in at ROOT so Dispatcharr's web server still serves it. The hidden
+# name keeps Plex / Jellyfin library scans out of it.
+STORAGE = {"data": None, "recordings": "/data/recordings/.viewarr-timeshift"}
 # Dispatcharr's own web server inside the container (uWSGI's HTTP port, which nginx hands /proxy/ to); overridable.
 PROXY_BASE = os.environ.get("VIEWARR_TS_PROXY", "http://127.0.0.1:5656")
 FFMPEG = "/usr/local/bin/ffmpeg" if os.path.exists("/usr/local/bin/ffmpeg") else "ffmpeg"
@@ -77,7 +81,37 @@ def settings_of(settings):
         most = int(str(s.get("timeshift_max") or DEFAULT_MAX).strip())
     except ValueError:
         most = DEFAULT_MAX
-    return on, max(10, min(window, 480)) * 60, max(1, min(most, 10))
+    storage = str(s.get("timeshift_storage") or "data").strip()
+    if storage not in STORAGE:
+        storage = "data"
+    return on, max(10, min(window, 480)) * 60, max(1, min(most, 10)), storage
+
+
+def use_storage(storage, log=None):
+    """Points ROOT at the chosen place: a plain folder, or a link to the recordings folder's hidden folder. Only
+    called with no buffer running (anything left in the old place is cleared)."""
+    real = STORAGE.get(storage)
+    try:
+        if real is None:
+            if os.path.islink(ROOT):
+                os.unlink(ROOT)
+            os.makedirs(ROOT, exist_ok=True)
+        else:
+            os.makedirs(real, exist_ok=True)
+            if os.path.islink(ROOT):
+                if os.readlink(ROOT) == real:
+                    return True
+                os.unlink(ROOT)
+            elif os.path.isdir(ROOT):
+                shutil.rmtree(ROOT, ignore_errors=True)
+            os.symlink(real, ROOT)
+        if log:
+            log("timeshift: buffer folder is %s" % (real or ROOT))
+        return True
+    except OSError as e:
+        if log:
+            log("timeshift: buffer folder %s couldn't be used (%s)" % (real or ROOT, e))
+        return False
 
 
 class Buffer:
@@ -231,7 +265,11 @@ class Manager:
             return
         self.settings_at = time.time()
         try:
-            self.on, self.window_s, self.most = settings_of(self.settings_fn())
+            self.on, self.window_s, self.most, storage = settings_of(self.settings_fn())
+            # (A new place only once nothing is buffered, so a buffer being watched never moves.)
+            if storage != getattr(self, "storage", None) and not self.buffers:
+                if use_storage(storage, getattr(self, "log", None)):
+                    self.storage = storage
         except Exception:
             pass
 
