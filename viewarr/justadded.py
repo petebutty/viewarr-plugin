@@ -165,3 +165,14 @@ def run(data_dir, log=None):
     if log:
         log("just added: %d titles across %d services to %d users (%d KB)" % (n, len(value["services"]), users, size // 1024))
     return {"titles": n, "services": len(value["services"]), "bytes": size}
+
+
+def clear(data_dir):
+    """Just added switched off in the settings: every user's stored lists removed (no TV shows an old copy), and
+    today's mark forgotten, so switching it back on fetches the same day."""
+    from apps.accounts.models import UserAppData
+    UserAppData.objects.filter(key=KEY).delete()
+    try:
+        os.remove(os.path.join(data_dir, "just_added_day.txt"))
+    except OSError:
+        pass

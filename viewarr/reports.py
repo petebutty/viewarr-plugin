@@ -319,10 +319,10 @@ def undo(data_dir, change_id):
 
 # ---- Publishing to the TVs
 
-def house_value(state, order_week, now):
+def house_value(state, order_week, now, quiet_on=True):
     changes = [{k: v for k, v in c.items() if k != "undo"} for c in state["changes"][-PUBLISH_CHANGES:]]
     try:
-        quiet = _streamorder().quiet_channel_ids()
+        quiet = _streamorder().quiet_channel_ids() if quiet_on else []
     except Exception:
         quiet = []
     value = {"updated_at": now, "offsets": dict(state["offsets"]), "changes": changes,
@@ -337,11 +337,11 @@ def _size(value):
     return len(json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
 
 
-def publish(state, order_week):
-    """viewarr_house to every active user."""
+def publish(state, order_week, quiet=True):
+    """viewarr_house to every active user (quiet False: no quiet channels, the event channels setting is off)."""
     from django.contrib.auth import get_user_model
     from apps.accounts.models import UserAppData
-    value = house_value(state, order_week, int(time.time()))
+    value = house_value(state, order_week, int(time.time()), quiet_on=quiet)
     size = _size(value)
     for user in get_user_model().objects.filter(is_active=True).only("id"):
         UserAppData.objects.update_or_create(user=user, key=HOUSE_KEY, defaults={"value": value, "byte_size": size})

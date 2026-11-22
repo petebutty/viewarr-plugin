@@ -103,7 +103,16 @@ class Plugin:
                 f"{(st.get('order') or {}).get('week', 0)} this week; "
                 f"reports: {(st.get('reports') or {}).get('handled', 0)} handled, "
                 f"{(st.get('reports') or {}).get('applied', 0)} changes; "
-                f"measured: {self._measured_text(st.get('measured') or {})}."}
+                f"measured: {self._measured_text(st.get('measured') or {})}; "
+                f"live timeshift: {self._timeshift_text(st.get('timeshift') or {})}"
+                + (f"; switched off: {', '.join(st['off'])}" if st.get("off") else "") + "."}
+
+    @staticmethod
+    def _timeshift_text(t):
+        if t.get("on") is False:
+            return "off"
+        n = t.get("buffers", 0)
+        return f"{n} channel(s) buffered" + (f", window {t['window_min']} min" if t.get("window_min") else "")
 
     @staticmethod
     def _measured_text(m):
@@ -203,6 +212,8 @@ class Plugin:
             return self._reports_status()
         if action == "measure_now":
             return self._measure_now(context)
+        if action.startswith("backup_") and ((context or {}).get("settings") or {}).get("backups", True) is False:
+            return {"status": "error", "message": "Backups are switched off in the Viewarr plugin's settings."}
         if action == "backup_save":
             return self._backup_save(params)
         if action == "backup_list":

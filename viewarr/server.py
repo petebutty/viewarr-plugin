@@ -29,6 +29,27 @@ VERSION = 1
 
 _MODULES = {}
 
+# Every function that can be switched off in the plugin's settings: the name the TVs read in viewarr_server's
+# "functions" map → its setting (all on by default). Off here: off for the whole house, and Viewarr hides it.
+FUNCTIONS = {
+    "live": "live_now", "games": "followed_games", "recordings": "sport_recordings", "alerts": "score_alerts",
+    "event_channels": "event_channels", "just_added": "just_added", "watch_sync": "watch_sync",
+    "stream_order": "stream_order", "reports": "reports_auto", "measure": "measure_on", "timeshift": "timeshift",
+    "backups": "backups",
+}
+# The functions as the last round found them (the quick score checks between rounds read it).
+_FN = {}
+
+
+def functions(settings):
+    """{function: on} from the plugin's settings. Sport recordings and score alerts work from the followed games, so
+    they're off whenever those are."""
+    settings = settings or {}
+    on = {name: settings.get(key, True) is not False for name, key in FUNCTIONS.items()}
+    if not on["games"]:
+        on["recordings"] = on["alerts"] = False
+    return on
+
 
 def _module(name):
     """Another file beside this one (sports.py…), loaded once and kept (its caches last between rounds)."""
@@ -350,18 +371,37 @@ def publish(log=None):
 
     close_old_connections()
     t0 = time.time()
+    try:
+        fn = functions(_own_settings())
+    except Exception:
+        fn = functions({})
+    _FN.clear()
+    _FN.update(fn)
     channels = _channels()
-    result = _sports().compute(
-        int(time.time()), [{k: v for k, v in c.items() if not k.startswith("_")} for c in channels],
-        _programmes_for(channels), _followed(), _plugin_groups(),
-        # (sports.py writes plain lines: log("…"); the plugin's logger is an object.)
-        log=(lambda msg: log.info("Viewarr sports: %s", msg)) if log else None,
-    )
+    if fn["live"] or fn["games"]:
+        result = _sports().compute(
+            int(time.time()), [{k: v for k, v in c.items() if not k.startswith("_")} for c in channels],
+            _programmes_for(channels),
+            # Followed games off: no fixtures or UK listings fetched (Live now still places ESPN's headline games).
+            _followed() if fn["games"] else [], _plugin_groups(),
+            # (sports.py writes plain lines: log("…"); the plugin's logger is an object.)
+            log=(lambda msg: log.info("Viewarr sports: %s", msg)) if log else None,
+            uk_listings=None if fn["games"] else [],
+        )
+    else:
+        result = {"live": [], "games": {}}
+    # A function switched off publishes nothing; the TVs read "functions" and hide it.
+    if not fn["live"]:
+        result["live"] = []
+    if not fn["games"]:
+        result["games"] = {}
+    result["functions"] = fn
     result["v"] = VERSION
     result["at"] = int(time.time())
     # (Kept for the quick score checks between rounds.)
     _LAST_GAMES.clear()
-    _LAST_GAMES.update(result.get("games") or {})
+    if fn["alerts"]:
+        _LAST_GAMES.update(result.get("games") or {})
     result = _shrink(result)
     data = json.dumps(result, separators=(",", ":"), ensure_ascii=False)
     size = len(data.encode("utf-8"))
@@ -376,31 +416,42 @@ def publish(log=None):
     # "<service> · Just added" rows.
     just = None
     try:
-        just = _module("justadded").run(_data_dir(), log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+        ja = _module("justadded")
+        if fn["just_added"]:
+            just = ja.run(_data_dir(), log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+        else:
+            # Off: the stored lists go, so no TV shows an old copy.
+            ja.clear(_data_dir())
+            just = {"off": True}
     except Exception as exc:
         if log:
             log.warning("Viewarr: just added failed: %s", exc)
     # IPTV watch progress kept in step with each user's Emby / Jellyfin (watchsync.py), for users who switched it on.
     watch = None
     try:
-        ws = _module("watchsync")
-        ws.DATA_DIR = os.path.join(os.path.dirname(_HERE), "_data", "viewarr")
-        watch = ws.run(log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+        if fn["watch_sync"]:
+            ws = _module("watchsync")
+            ws.DATA_DIR = os.path.join(os.path.dirname(_HERE), "_data", "viewarr")
+            watch = ws.run(log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+        else:
+            watch = {"off": True}
     except Exception as exc:
         if log:
             log.warning("Viewarr: watch sync failed: %s", exc)
-    try:
-        recorded = record_wanted(result, channels, log)
-    except Exception as exc:
-        recorded = 0
-        if log:
-            log.warning("Viewarr: team / game recordings failed: %s", exc)
+    recorded = 0
+    if fn["recordings"]:
+        try:
+            recorded = record_wanted(result, channels, log)
+        except Exception as exc:
+            if log:
+                log.warning("Viewarr: team / game recordings failed: %s", exc)
     # Reports from the TVs (reports.py) and Best stream first (streamorder.py): both house-wide, both their own file.
-    house = house_round(log)
+    house = house_round(log, fn)
     close_old_connections()
     status = {
         "recorded": recorded, "watch": watch, "just_added": just,
         "order": house.get("order"), "reports": house.get("reports"), "measured": house.get("measured"),
+        "timeshift": _timeshift_status(), "off": sorted(k for k, on in fn.items() if not on),
         "at": result["at"], "seconds": round(time.time() - t0, 1), "bytes": size, "users": users,
         "live": len(result.get("live", [])), "games": len(result.get("games", {})),
     }
@@ -409,11 +460,18 @@ def publish(log=None):
     return status
 
 
+def _timeshift_status():
+    try:
+        return _module("timeshift").status()
+    except Exception:
+        return None
+
+
 def _data_dir():
     return os.path.join(os.path.dirname(_HERE), "_data", "viewarr")
 
 
-def house_round(log=None):
+def house_round(log=None, fn=None):
     """Reports from the TVs acted on, then each channel's best stream put first (the dead reports feed it), then the
     house-wide results published (viewarr_house). Each part is caught on its own: none of it may stop the sports."""
     settings = {}
@@ -421,6 +479,7 @@ def house_round(log=None):
         settings = _own_settings()
     except Exception:
         pass
+    fn = fn or functions(settings)
     plain = (lambda m: log.info("Viewarr: %s", m)) if log else None
     data_dir = _data_dir()
     out = {"order": None, "reports": None}
@@ -449,7 +508,8 @@ def house_round(log=None):
             log.warning("Viewarr: best stream first failed: %s", exc)
     try:
         if rp:
-            rp.publish(rp.load_state(data_dir), (out["order"] or {}).get("week", 0))
+            # (Event channels off: no quiet channels sent, so no TV hides any.)
+            rp.publish(rp.load_state(data_dir), (out["order"] or {}).get("week", 0), quiet=fn["event_channels"])
     except Exception as exc:
         if log:
             log.warning("Viewarr: house publish failed: %s", exc)
@@ -476,6 +536,14 @@ def service(stop_event, log=None, status_path=None):
     except Exception as exc:
         if log:
             log.warning("Viewarr: measuring thread didn't start: %s", exc)
+    # Timeshift (timeshift.py): a buffer per channel being watched, so any TV can pause and rewind live TV. Its own
+    # thread, watching the TVs' requests every second; it stops every buffer when the service stops.
+    try:
+        _module("timeshift").start(stop_event, _data_dir(), _own_settings,
+                                   log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+    except Exception as exc:
+        if log:
+            log.warning("Viewarr: timeshift thread didn't start: %s", exc)
     while not stop_event.is_set():
         if time.time() - last_full >= INTERVAL_S:
             last_full = time.time()
@@ -500,8 +568,12 @@ def service(stop_event, log=None, status_path=None):
                     pass
         try:
             al = _module("alerts")
-            if al.check(_LAST_GAMES, log=(lambda m: log.info("Viewarr: %s", m)) if log else None):
-                al.publish(log)
+            if _FN.get("alerts", True):
+                if al.check(_LAST_GAMES, log=(lambda m: log.info("Viewarr: %s", m)) if log else None):
+                    al.publish(log)
+            else:
+                # Off: the stored alerts are emptied once, so no TV shows an old one.
+                al.clear(log)
         except Exception as exc:
             if log:
                 log.warning("Viewarr: score alerts check failed: %s", exc)

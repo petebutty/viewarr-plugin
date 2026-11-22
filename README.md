@@ -25,7 +25,7 @@ If the plugin is missing or stops, the TVs go back to doing the work themselves.
   Each TV then applies its own choices: groups, sports, leagues and "Only what I follow".
 - **Where every followed game is on.** It collects the teams and leagues anyone in the house follows, then gets their fixtures and scores from ESPN. For each game it works out which of your channels shows it (see [UK football on TV](#uk-football-on-tv)). This feeds Viewarr's Sports page, the game cards and **Watch**.
 - **Sport recordings.** For **Record all &lt;team&gt;**, or **Record** on a game the guide doesn't list yet, it creates the recording in Dispatcharr as soon as the guide lists the game. This works even with every TV off.
-- **Watch sync (optional, for people without Trakt).** It keeps someone's IPTV watch progress in step with their own Emby, Jellyfin or Plex, in both directions, matched by TMDB id. Finish a film on IPTV and it's ticked in Plex.
+- **IPTV progress sync (optional, for people without Trakt).** It keeps someone's IPTV watch progress in step with their own Emby, Jellyfin or Plex, in both directions, matched by TMDB id. Finish a film on IPTV and it's ticked in Plex.
   - It only touches titles they've played on IPTV.
   - Each person switches it on for themselves in Viewarr → Settings → Playback → Watch progress.
   - If you use Trakt, leave it off: Trakt already does this.
@@ -35,6 +35,10 @@ If the plugin is missing or stops, the TVs go back to doing the work themselves.
 - **Score alerts and live scores:** kick-off, goals, half-time, full time and the result, with sport-aware wording ("Tip-off", "Puck drop", "TOUCHDOWN"). Basketball gets no alert for every basket.
 - **Alerts are off for everyone** until they choose a team in Viewarr → Settings → Sports. Each TV shows only the alerts its own person switched on.
 - The same scores feed Viewarr's news ticker.
+
+### Every second, while a TV watches live TV
+
+- **Live timeshift:** pause, rewind and fast-forward any live channel, not only ones with catch-up. While a TV watches a channel, ffmpeg copies it from Dispatcharr's own proxy (which shares the provider connection with everyone watching, so no extra connection) into a sliding HLS playlist of the last couple of hours, under `/data/logos/viewarr-ts/<random token>/`. Every TV on that channel shares the one copy. Live TV plays as usual; only a pause or rewind moves the TV onto the copy. A TV asks through its own Dispatcharr app data (`viewarr_timeshift_req`), which the plugin checks every second, and reads the answer from `viewarr_timeshift`. The copy stops, and its files are deleted, as soon as no TV wants it (at once on a channel change, or a minute after a TV goes quiet). Each person can switch it off in Viewarr → Settings → Live TV.
 
 ### When asked
 
@@ -113,15 +117,29 @@ That's it. Nobody needs to set anything up in Viewarr: each TV finds the plugin 
 
 | Setting | What it does |
 |---|---|
+| **Live now** | On by default. Works out Live now for the house. Off: Live now is off for the house and Viewarr hides it. |
 | **Live now: extra channel groups to search** | The plugin always searches groups whose names sound like sport (Sports, Football, Events, Box Office, EPL…) and Event Channel Managarr's groups. Add others here, such as your provider's event-feed groups. Easier: switch a group on in Viewarr → Settings → Live TV → Live now groups, and the plugin searches it from the next round. |
+| **Followed games and where they're on** | On by default. Fixtures of every followed team and league (ESPN) and the channel for each game (the guide, Sky's schedule, UK football TV listings). Off: no fixtures or listings fetched here; the Sports page places games from each TV's own guide only. Sport recordings and score alerts need it on. |
+| **Sport recordings** | On by default. "Record all &lt;team&gt;" and Record on games not yet in the guide, made on the server with the TVs off. Off: Viewarr hides Record all &lt;team&gt; and record-when-listed (recording a game already in the guide still works). |
+| **Score alerts and live scores** | On by default. The 45-second score checks for alerts and the ticker's Live scores. Off: the stored alerts are emptied and Viewarr hides score alerts and Live scores. |
+| **Event channels: only with a listing** | On by default. Sends the TVs the plugin's event channels (`quiet_channels` in `viewarr_house`), so Viewarr can hide those with nothing listed. Off: an empty list is sent, every event channel is shown and Viewarr hides the option. |
+| **Just added (JustWatch)** | On by default. The daily JustWatch fetch for the "&lt;service&gt; · Just added" rows. Off: the stored lists are removed and Viewarr hides the rows. |
+| **IPTV progress sync (Plex, Jellyfin, Emby)** | On by default. The house-wide switch for IPTV progress sync; each person still switches it on in Viewarr. Off: no syncing, and Viewarr hides the option. |
 | **Best stream first** | On by default. Puts each channel's best stream first in Dispatcharr; see [Best stream first](#best-stream-first). |
 | **Act on reports from the TVs** | On by default. Applies reports from Viewarr straight away; see [Reports from the TV](#reports-from-the-tv). |
+| **Groups never reported** | Groups that are off air most of the time (club TV). Their streams are never marked failing or measured. Comma-separated. |
 | **Change to undo (id)** | Only for the **Undo a change** button on Dispatcharr's page. Viewarr sends the id itself. |
 | **Measure streams at night** | On by default. Measures streams with ffprobe inside the window; see [Measuring streams](#measuring-streams). |
 | **Measuring window (local time)** | `HH:MM-HH:MM`, default `01:00-07:00`. Empty: never on a schedule. |
 | **Measure these channel groups first** | Channel groups in priority order; the rest follow alphabetically. |
 | **Measure only the listed groups** | Off by default. On: skip every other group. |
 | **Provider to measure first** | M3U account name; empty means the one with the most left. |
+| **Live timeshift (pause and rewind live TV)** | On by default. Keeps a buffer of each channel being watched; see above. Off: Viewarr hides it. |
+| **Live timeshift: buffer length** | How far back a TV can rewind: 30 minutes to 4 hours, default 2 hours. An HD channel takes about 3 GB an hour on `/data` while it's watched. |
+| **Live timeshift: channels at once** | Default 3. Beyond it a TV has catch-up (if the channel has it) or live only. |
+| **Backups** | On by default. Off: Viewarr hides Backups and the plugin refuses them; saved ones are kept. |
+
+Every function can be switched on or off, and its options set, from Viewarr itself (Settings → Plugins → Viewarr, admins). The plugin tells the TVs which functions are on (`functions` in `viewarr_server`); while one is off it's off for the whole house and Viewarr hides it. Only with no plugin at all do the TVs do these jobs themselves, as before.
 
 ## Polite to the sources
 

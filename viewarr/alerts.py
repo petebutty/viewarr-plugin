@@ -120,6 +120,7 @@ def publish(log=None):
     from django.db import close_old_connections
     from apps.accounts.models import UserAppData
 
+    _cleared[0] = False
     now = time.time()
     _events[:] = [e for e in _events if now - e["at"] < KEEP_S][-40:]
     for gid in [g for g, v in _live.items() if v.get("state") == "post" and now - v["at"] > KEEP_S or now - v["at"] > 4 * 3600]:
@@ -130,3 +131,18 @@ def publish(log=None):
     for user in get_user_model().objects.filter(is_active=True).only("id"):
         UserAppData.objects.update_or_create(user=user, key=KEY, defaults={"value": value, "byte_size": size})
     close_old_connections()
+
+
+_cleared = [False]
+
+
+def clear(log=None):
+    """Score alerts switched off in the settings: what's kept is forgotten and every user's stored alerts emptied,
+    once (then nothing more until they're switched on again)."""
+    if _cleared[0]:
+        return
+    _prev.clear()
+    _events.clear()
+    _live.clear()
+    publish(log)
+    _cleared[0] = True
