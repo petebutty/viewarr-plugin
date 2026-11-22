@@ -38,7 +38,7 @@ If the plugin is missing or stops, the TVs go back to doing the work themselves.
 
 ### Every second, while a TV watches live TV
 
-- **Live timeshift:** pause, rewind and fast-forward any live channel, not only ones with catch-up. While a TV watches a channel, ffmpeg copies it from Dispatcharr's own proxy (which shares the provider connection with everyone watching, so no extra connection) into a sliding HLS playlist of the last couple of hours, under `/data/logos/viewarr-ts/<random token>/`. Every TV on that channel shares the one copy. Live TV plays as usual; only a pause or rewind moves the TV onto the copy. A TV asks through its own Dispatcharr app data (`viewarr_timeshift_req`), which the plugin checks every second, and reads the answer from `viewarr_timeshift`. The copy stops, and its files are deleted, as soon as no TV wants it (at once on a channel change, or a minute after a TV goes quiet). Each person can switch it off in Viewarr → Settings → Live TV.
+- **Live timeshift:** pause, rewind and fast-forward any live channel, not only ones with catch-up. While a TV watches a channel, ffmpeg copies it from Dispatcharr's own proxy (which shares the provider connection with everyone watching, so no extra connection) into a sliding HLS playlist of the last couple of hours, under `/data/logos/viewarr-ts/<random token>/` (see [where the buffer is kept](#live-timeshift-where-the-buffer-is-kept)). Every TV on that channel shares the one copy. Live TV plays as usual; only a pause or rewind moves the TV onto the copy. A TV asks through its own Dispatcharr app data (`viewarr_timeshift_req`), which the plugin checks every second, and reads the answer from `viewarr_timeshift`. The copy stops, and its files are deleted, as soon as no TV wants it (at once on a channel change, or a minute after a TV goes quiet). Each person can switch it off in Viewarr → Settings → Live TV.
 
 ### When asked
 
@@ -102,6 +102,40 @@ Games caught by the Saturday 3pm blackout are marked **Not on UK TV**, rather th
 Leagues covered: Scottish Premiership, Championship and cups; Premier League, EFL and cups; Champions, Europa and Conference League; internationals; the big European leagues; MLS; rugby union and league; NBA, NFL, NHL and MLB; F1, golf, tennis and UFC.
 
 You don't need the [UK Sport on TV](https://github.com/petebutty/uk-sport-on-tv) plugin for Viewarr. Use it as well if you want the matches written into Dispatcharr's guide for every other app too.
+
+## Live timeshift: where the buffer is kept
+
+Live timeshift needs disk space on your Dispatcharr server while someone watches: about **3 GB per hour of buffer for each channel being watched** (an HD channel; less for SD). With the defaults (2 hours, up to 3 channels at once) that's up to about **18 GB**, all deleted as soon as nobody's watching. The plugin won't start a buffer with less than 10 GB free.
+
+You don't type a path: **Live timeshift: buffer folder** offers the two places your Dispatcharr already has, so it can't point anywhere that doesn't exist.
+
+| Choice | Where the files really are |
+|---|---|
+| **Dispatcharr's data folder** (default) | Inside whatever you mapped to `/data` in your Dispatcharr container (for example `/mnt/user/appdata/dispatcharr` on Unraid, or the `./data` folder next to your compose file), in `logos/viewarr-ts`. |
+| **TV recordings folder** | Dispatcharr's `/data/recordings`, where it saves recordings, in a hidden `.viewarr-timeshift` folder (so Plex, Jellyfin and Emby don't pick it up). By default that's a folder inside `/data`; if you've mapped a separate share or disk to `/data/recordings`, the buffer goes there. |
+
+The folder changes once no channel is being buffered.
+
+### Keeping recordings (and the buffer) on another disk or share
+
+Dispatcharr always records into `/data/recordings` inside its container. To put recordings on another disk or share, map it to that path, then choose **TV recordings folder** if you want the timeshift buffer there too.
+
+- **Unraid:** Docker → Dispatcharr → Edit → **Add another Path**: Container Path `/data/recordings`, Host Path your share (for example `/mnt/user/TV recordings`), Access Mode Read/Write. Apply.
+- **Docker compose:** add a volume to the Dispatcharr service and recreate it:
+
+  ```yaml
+  services:
+    dispatcharr:
+      volumes:
+        - ./data:/data
+        - /path/to/your/recordings:/data/recordings
+  ```
+
+Tips:
+
+- **Fast storage is best** (an SSD or cache pool): the buffer is written constantly while someone watches.
+- **Unraid "use cache: yes" shares:** the mover can move older buffer pieces to the array while someone is watching late at night, and rewinding that far would then fail. Use Dispatcharr's data folder, or set the share to cache only, if that happens.
+- Not on the Docker image: as long as `/data` (and `/data/recordings`, if you use it) are mapped to real folders, nothing is written inside the container itself.
 
 ## Install
 
