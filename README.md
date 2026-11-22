@@ -135,6 +135,7 @@ That's it. Nobody needs to set anything up in Viewarr: each TV finds the plugin 
 | **Measure only the listed groups** | Off by default. On: skip every other group. |
 | **Provider to measure first** | M3U account name; empty means the one with the most left. |
 | **Live timeshift (pause and rewind live TV)** | On by default. Keeps a buffer of each channel being watched; see above. Off: Viewarr hides it. |
+| Live timeshift: channels | All channels (default), or only channels without catch-up (those keep using the provider's catch-up). |
 | **Live timeshift: buffer length** | How far back a TV can rewind: 30 minutes to 4 hours, default 2 hours. An HD channel takes about 3 GB an hour on `/data` while it's watched. |
 | **Live timeshift: channels at once** | Default 3. Beyond it a TV has catch-up (if the channel has it) or live only. |
 | Live timeshift: buffer folder | Dispatcharr's data folder (default), or the TV recordings folder (`/data/recordings/.viewarr-timeshift`, hidden from Plex/Jellyfin). Changes once nothing is being buffered. |

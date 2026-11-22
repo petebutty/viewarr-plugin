@@ -265,7 +265,10 @@ class Manager:
             return
         self.settings_at = time.time()
         try:
-            self.on, self.window_s, self.most, storage = settings_of(self.settings_fn())
+            raw = self.settings_fn() or {}
+            self.on, self.window_s, self.most, storage = settings_of(raw)
+            # "all" channels, or only those without the provider's catch-up (the TVs skip asking for those).
+            self.channels = "no_catchup" if str(raw.get("timeshift_channels") or "all").strip() == "no_catchup" else "all"
             # (A new place only once nothing is buffered, so a buffer being watched never moves.)
             if storage != getattr(self, "storage", None) and not self.buffers:
                 if use_storage(storage, getattr(self, "log", None)):
@@ -384,6 +387,7 @@ class Manager:
     def reply(self):
         return {
             "v": VERSION, "on": self.on, "window_s": self.window_s, "segment_s": SEGMENT_S,
+            "channels": getattr(self, "channels", "all"),
             "buffers": {u: {"url": b.url, "started_at": b.started_at, "ready": b.ready} for u, b in self.buffers.items()},
             "refused": dict(self.refused),
         }

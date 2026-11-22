@@ -1,6 +1,6 @@
 {
   "name": "Viewarr",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "The server half of Viewarr: does the sports and guide work once for the whole house, puts each channel's best stream first, acts on reports from the TVs, so every TV is quicker and keeps working with the TVs off.",
   "author": "petebutty",
   "license": "MIT",
@@ -147,6 +147,23 @@
       "type": "boolean",
       "default": true,
       "help_text": "While a TV watches a channel, the last couple of hours of it are kept on this server, so Viewarr can pause, rewind and fast-forward any channel, not only ones with catch-up. One copy per channel, shared by every TV watching it, taken from Dispatcharr's own stream, so it uses no extra provider connection. It stops a minute after the last TV leaves the channel (at once when a TV changes channel) and the files are deleted. Each person can still switch it off for themselves in Viewarr \u2192 Settings \u2192 Live TV. Off: switched off for the whole house, and Viewarr hides it."
+    },
+    {
+      "id": "timeshift_channels",
+      "label": "Live timeshift: channels",
+      "type": "select",
+      "default": "all",
+      "options": [
+        {
+          "value": "all",
+          "label": "All channels"
+        },
+        {
+          "value": "no_catchup",
+          "label": "Only channels without catch-up"
+        }
+      ],
+      "help_text": "Only channels without catch-up: channels with the provider's catch-up keep using that for pause and rewind, saving disk space and a buffer each."
     },
     {
       "id": "timeshift_window",
