@@ -13,7 +13,7 @@
       "id": "about",
       "label": "How it works with Viewarr",
       "type": "info",
-      "help_text": "How it works with Viewarr: Viewarr works without this plugin, but then every TV does all the work itself. With it, Dispatcharr does that work once for the house, every 5 minutes, and leaves the answers in each person's own Dispatcharr storage; each TV just reads them.\n\nWhat it does:\n\u2022 Live now and Sports: which games are on, in the leagues and teams anyone follows, and which channel shows each (from Dispatcharr's guide, ESPN, the Sky schedule and UK football TV listings weeks ahead).\n\u2022 Recordings for sport: \"Record all <team>\" or Record on a game that isn't in the guide yet is made as soon as the guide lists it, even with every TV off.\n\u2022 Score alerts and live scores: kick-offs, goals and results, only for the teams each person switches alerts on for (off until they do, in Viewarr \u2192 Settings \u2192 Sports).\n\u2022 Best stream first: each channel's best stream (FHD before HD before SD; streams that keep failing on the TVs drop down) is put first in Dispatcharr, so every app and TV starts on it.\n\u2022 Just added: what arrived on each streaming service in the UK in the last fortnight (films, and new seasons of shows), once a day from JustWatch, for Viewarr's \"<service> \u00b7 Just added\" rows.\n\u2022 Reports from the TVs: wrong guide, guide times out, dead stream, wrong logo or name, reported from Viewarr and applied straight away; each change can be undone.\n\u2022 Measuring streams at night: each stream's real picture size and codec, checked with ffprobe in a quiet window, one at a time, always leaving the provider a line for watching.\n\u2022 Live timeshift: pause, rewind and fast-forward any live channel, from a buffer kept here while it's watched.\n\u2022 TV guide (optional, off by default): Sky's own listings for your region, matched to your channels and added to Dispatcharr as a guide source.\n\u2022 Channel logos (optional, off by default): fills in missing or broken channel logos from Sky (channels the TV guide matched) and the tv-logos collection on GitHub; every change can be put back.\n\u2022 Backups of an admin's Viewarr setup (Viewarr \u2192 Settings \u2192 Users & profiles \u2192 Backups).\n\nEach of these can be switched off below (or from Viewarr \u2192 Settings \u2192 Plugins \u2192 Viewarr); it's then off for the whole house and Viewarr hides it. Nothing needs setting up in Viewarr: a TV finds the plugin by itself. If the plugin stops, the TVs go back to doing the work themselves."
+      "help_text": "How it works with Viewarr: Viewarr works without this plugin, but then every TV does all the work itself. With it, Dispatcharr does that work once for the house, every 5 minutes, and leaves the answers in each person's own Dispatcharr storage; each TV just reads them.\n\nWhat it does:\n\u2022 Live now and Sports: which games are on, in the leagues and teams anyone follows, and which channel shows each (from Dispatcharr's guide, ESPN, the Sky schedule and UK football TV listings weeks ahead).\n\u2022 Recordings for sport: \"Record all <team>\" or Record on a game that isn't in the guide yet is made as soon as the guide lists it, even with every TV off.\n\u2022 Score alerts and live scores: kick-offs, goals and results, only for the teams each person switches alerts on for (off until they do, in Viewarr \u2192 Settings \u2192 Sports).\n\u2022 Best stream first: each channel's best stream (FHD before HD before SD; streams that keep failing on the TVs drop down) is put first in Dispatcharr, so every app and TV starts on it.\n\u2022 Just added: what arrived on each streaming service in the UK in the last fortnight (films, and new seasons of shows), once a day from JustWatch, for Viewarr's \"<service> \u00b7 Just added\" rows.\n\u2022 Reports from the TVs: wrong guide, guide times out, dead stream, wrong logo or name, reported from Viewarr and applied straight away; each change can be undone.\n\u2022 Measuring streams at night: each stream's real picture size and codec, checked with ffprobe in a quiet window, one at a time, always leaving the provider a line for watching.\n\u2022 Live timeshift: pause, rewind and fast-forward any live channel, from a buffer kept here while it's watched.\n\u2022 TV guide (optional, off by default): Sky's own listings for your region, matched to your channels and added to Dispatcharr as a guide source.\n\u2022 Channel logos (optional, off by default): fills in missing or broken channel logos from Sky (channels the TV guide matched); every change can be put back.\n\u2022 Backups of an admin's Viewarr setup (Viewarr \u2192 Settings \u2192 Users & profiles \u2192 Backups).\n\nEach of these can be switched off below (or from Viewarr \u2192 Settings \u2192 Plugins \u2192 Viewarr); it's then off for the whole house and Viewarr hides it. Nothing needs setting up in Viewarr: a TV finds the plugin by itself. If the plugin stops, the TVs go back to doing the work themselves."
     },
     {
       "id": "live_now",
@@ -391,7 +391,7 @@
     },
     {
       "id": "guide_logos",
-      "label": "Channel logos (from Sky, then tv-logos)",
+      "label": "Channel logos from Sky",
       "type": "select",
       "default": "off",
       "options": [
@@ -408,77 +408,7 @@
           "label": "Use for every channel"
         }
       ],
-      "help_text": "Logos for your channels: Sky's own logo for channels the TV guide matched to Sky (while the TV guide is on), then the tv-logos collection on GitHub for the other channels in your lineup, matched by name in the country below. Channels neither has are left alone.\n\u2022 Off (the default): nothing changes, and any logo set here goes back to the one the channel had.\n\u2022 Fill in missing logos: only channels with no logo, a logo whose address no longer works (missing file, error, not a picture) or a stand-in (\"placeholder\", \"no logo\").\n\u2022 Use for every channel: every channel a source has a logo for gets it.\nEvery change is remembered and undone when switched off, unless someone changes that channel's logo by hand since; such channels, and channels with a logo override in Dispatcharr, are never touched. 24/7 and event channels made automatically by Dispatcharr are left out. Runs once a day, after each TV guide fetch and a couple of minutes after a change here; works with the TV guide off too (tv-logos only then)."
-    },
-    {
-      "id": "logos_sources",
-      "label": "Channel logos: sources",
-      "type": "select",
-      "default": "sky_tvlogos",
-      "options": [
-        {
-          "value": "sky_tvlogos",
-          "label": "Sky, then tv-logos"
-        },
-        {
-          "value": "sky",
-          "label": "Sky only"
-        },
-        {
-          "value": "tvlogos",
-          "label": "tv-logos only"
-        }
-      ],
-      "help_text": "Where logos come from. Sky: the logo of the Sky channel the TV guide matched (needs the TV guide on). tv-logos: github.com/tv-logo/tv-logos, logos made for dark backgrounds (free for personal use; the folder listing is read once a day)."
-    },
-    {
-      "id": "logos_country",
-      "label": "Channel logos: country",
-      "type": "select",
-      "default": "united-kingdom",
-      "options": [
-        {
-          "value": "united-kingdom",
-          "label": "United Kingdom"
-        },
-        {
-          "value": "ireland",
-          "label": "Ireland"
-        },
-        {
-          "value": "united-states",
-          "label": "United States"
-        },
-        {
-          "value": "canada",
-          "label": "Canada"
-        },
-        {
-          "value": "australia",
-          "label": "Australia"
-        },
-        {
-          "value": "germany",
-          "label": "Germany"
-        },
-        {
-          "value": "france",
-          "label": "France"
-        },
-        {
-          "value": "spain",
-          "label": "Spain"
-        },
-        {
-          "value": "italy",
-          "label": "Italy"
-        },
-        {
-          "value": "netherlands",
-          "label": "Netherlands"
-        }
-      ],
-      "help_text": "Which tv-logos country folder your channels are matched against."
+      "help_text": "Logos for channels the TV guide matched to Sky (needs the TV guide on). Only missing: channels with no logo, or a broken one. All: Sky's logo for every matched channel. Off puts back the logos it changed; a logo you change by hand is never touched."
     }
   ],
   "actions": [
@@ -540,7 +470,7 @@
     {
       "id": "logos_status",
       "label": "Channel logos status",
-      "description": "How many channels use a logo from Sky or tv-logos, how many kept their own, and how many the plugin has changed (put back when switched off)."
+      "description": "How many channels use a logo from Sky, how many kept their own, and how many the plugin has changed (put back when switched off)."
     },
     {
       "id": "logos_preview",

@@ -43,7 +43,7 @@ If the plugin is missing or stops, the TVs go back to doing the work themselves.
 ### Twice a day (optional, off by default)
 
 - **TV guide (Sky).** Sky's own listings for your region, matched to your channels, written as an XMLTV guide and added to Dispatcharr as the guide source **Viewarr: Sky guide**. Nothing in your channels' guide mapping changes until you say so. See [TV guide (Sky)](#tv-guide-sky).
-- **Channel logos.** Fills in missing or broken channel logos (or replaces them all, if you choose) from Sky's own logos for channels the TV guide matched, then from the [tv-logos](https://github.com/tv-logo/tv-logos) collection for the rest of your lineup. Once a day and after each guide fetch; every change can be put back. See [Channel logos](#channel-logos).
+- **Channel logos (off by default).** Fills in missing or broken logos (or replaces them all, if you choose) with Sky's own logos for channels the TV guide matched. Every change can be put back.
 
 ### When asked
 
@@ -181,43 +181,16 @@ An optional guide for your channels made straight from Sky's own listings (the o
 
 ## Channel logos
 
-Optional, off until you set **Channel logos from Sky**. It gives your channels logos from two sources, in order:
+**Channel logos from Sky** (off by default): fills in logos for channels the TV guide matched to Sky, using Sky's own channel logos. *Only missing* touches channels with no logo or a broken one; *All* uses Sky's logo for every matched channel. Switching it off puts back the logos it changed, and a logo you change by hand is never touched again. It needs the TV guide (Sky) on.
 
-1. **Sky's own logo**, for every channel the [TV guide](#tv-guide-sky) matched to a Sky channel (only while the TV guide is on). Sky's logos (`https://d2n0069hmnqmmx.cloudfront.net/epgdata/1.0/newchanlogos/500/500/skychb<sid>.png`) are transparent PNGs, mostly white, made for Sky's dark menus, so they suit Viewarr's dark screens. (No separate dark or light version exists at that address; 500 px is plenty for a TV.)
-2. **[tv-logos](https://github.com/tv-logo/tv-logos)** for the other channels in your lineup, matched by name inside the country you choose, with the same name matching as the guide (exact names first; a close name only when it's clearly ahead of the next one). Its logos are 512 px PNGs made for dark backgrounds. The plain version is used; a horizontal (`hz`) or `white` one only when there's no plain one; versions for light backgrounds are skipped. The country's folder listing is read once a day (two GitHub requests) and kept; the logos themselves are linked from `raw.githubusercontent.com` and Dispatcharr fetches them itself. tv-logos is free for personal use (see its README); please credit it if you pass logos on.
-3. Anything neither has is **left alone**.
-
-**Which channels.** Sky: the channels the guide matched. tv-logos: the channels in your lineup (enabled in a channel profile, not radio), leaving out channels Dispatcharr made automatically from a provider's groups (24/7 and event channels), groups whose names start "24/7" and names that look like event slots ("Event 3", "PPV 12", "20:00", "A vs B").
-
-**Missing** means: no logo; a logo whose address no longer works (the file is gone, an error comes back, or it isn't a picture); or a stand-in ("placeholder", "no logo" in its name or address). Each logo address is checked with one tiny request and the answer kept (a working one for 30 days, a broken one for a day); at most 400 checks a run.
-
-**When.** Once a day (05:15), a couple of minutes after you change these settings, and a few minutes after each TV guide fetch. It works with the TV guide off too (tv-logos only then). One log line per run: `guide: logos — N filled, M replaced, K put back`.
-
-**Safe to try.** Before any channel's logo changes, its earlier logo is written to `_data/viewarr/logo_backup.json`, with the logo set here. Switching **Channel logos from Sky** off (or a source no longer giving that channel a logo, for example turning the TV guide off for Sky's) puts the earlier logo back, unless someone has changed that channel's logo by hand since: then it's left as it is and never touched again. Channels with a logo override in Dispatcharr are never touched. An existing Dispatcharr logo with the same address is reused rather than duplicated. **Preview channel logos** shows what would change without changing anything (parameters `mode` = `missing` / `all` and `sources` = `sky_tvlogos` / `sky` / `tvlogos` to try other settings).
-
-| Setting | What it does |
-|---|---|
-| **Channel logos from Sky** | **Off** (default): nothing changes, and logos set here go back. **Fill in missing logos**: only channels with no logo or a broken one. **Use for every channel**: every channel a source has a logo for gets it. |
-| Channel logos: sources | **Sky, then tv-logos** (default), **Sky only** (needs the TV guide on), or **tv-logos only**. |
-| Channel logos: country | The tv-logos country folder: United Kingdom (default), Ireland, United States, Canada, Australia, Germany, France, Spain, Italy, Netherlands. |
-
-### Adding a listings source
-
-Listings sources plug in. Each is a class in `viewarr/guide.py` derived from `ListingsSource`, with:
-
-- `key`, `label`, `epg_name` (its Dispatcharr guide source) and `channel_prefix` (its stable XMLTV channel ids);
-- `services(settings, http)`: the region's or lineup's channels as `{"id", "name", "number", "logo", "hd"}`;
-- `schedules(settings, ids, days, http, cache)`: the programmes of those channels, keeping the last good copy in `cache` for anything that fails;
-- optionally `match_names(service)` for the source's abbreviations and renames.
-
-Add it to `SOURCES` and to the `guide_source` options in `plugin.json`. Matching, the XMLTV file, the Dispatcharr guide source, the channel mapping, the review list and the comparison are shared. A documented stub for **Schedules Direct (US / Canada)** is there already and can't be chosen yet (Dispatcharr also has its own built-in Schedules Direct guide source).
+A second source for channels Sky doesn't carry (the community tv-logos collection) is planned, once its author has agreed.
 
 ## Install
 
 1. Dispatcharr → **Plugins** → **Import**, and choose `viewarr-plugin-<version>.zip` from the [releases](https://github.com/petebutty/viewarr-plugin/releases).
 2. **Enable** it. Dispatcharr asks you to approve what it uses:
    - **persistent service:** it runs every few minutes;
-   - **outbound network:** it reads ESPN, TMDB, the Sky schedule (and Sky's listings for the TV guide, and the tv-logos listing for channel logos, if you switch them on) and the UK listings;
+   - **outbound network:** it reads ESPN, TMDB, the Sky schedule (and Sky's listings for the TV guide) and the UK listings;
    - **user data:** it reads each person's Viewarr setup, stream health and reports, and leaves their answers there.
 
 That's it. Nobody needs to set anything up in Viewarr: each TV finds the plugin by itself. Each person's follows, Live now groups and alert choices reach the plugin through their synced Viewarr setup.
@@ -260,7 +233,7 @@ Every function can be switched on or off, and its options set, from Viewarr itse
 - **ESPN:** only the leagues and teams someone follows. Live scores are checked only while a followed game is on.
 - **TMDB:** about 250 titles a round. Each title is looked up once and remembered.
 - **Sky listings (TV guide, when on):** twice a day, one request for the channel list and one per 20 matched channels per day (about 60 for 130 channels and 8 days), two at a time with a pause after each. Failures are retried at most three times with growing waits; whatever still fails keeps its last good listings.
-- **Channel logos (when on):** the tv-logos country listing at most once a day (two GitHub API requests); each logo address checked once with a tiny request and remembered (30 days if it worked, a day if not), a quarter of a second apart, at most 400 a run.
+- **Channel logos (when on):** each Sky logo address checked once with a tiny request and remembered for 30 days.
 - **User-Agent:** every request identifies itself with a link to this repo.
 
 ## Requirements

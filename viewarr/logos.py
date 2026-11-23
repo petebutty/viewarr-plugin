@@ -70,6 +70,7 @@ TVL_ACCEPT = 0.9                 # a tv-logos name match at least this good is t
 
 MODES = ("off", "missing", "all")
 SOURCES = ("sky_tvlogos", "sky", "tvlogos")
+TVLOGOS_ALLOWED = False
 # tv-logos country folder → (label, the country code at the end of its file names)
 COUNTRIES = {
     "united-kingdom": ("United Kingdom", "uk"), "ireland": ("Ireland", "ie"),
@@ -137,7 +138,9 @@ def config(settings):
         country = DEFAULT_COUNTRY
     guide_on = s.get("guide", False) is True or str(s.get("guide")).lower() == "true"
     use_sky = sources in ("sky_tvlogos", "sky") and guide_on
-    use_tvl = sources in ("sky_tvlogos", "tvlogos")
+    # tv-logos is switched off until its author has agreed to this use (their README asks apps to ask first): the code
+    # stays, but nothing is fetched from it. Set TVLOGOS_ALLOWED once they've said yes.
+    use_tvl = TVLOGOS_ALLOWED and sources in ("sky_tvlogos", "tvlogos")
     sig = json.dumps([mode, sources, country, guide_on])
     return {"mode": mode, "on": mode != "off", "sources": sources, "country": country, "guide_on": guide_on,
             "sky": use_sky, "tvlogos": use_tvl, "sig": sig}
