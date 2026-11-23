@@ -6,7 +6,6 @@ Stdlib only. Entry point: compute(now_s, channels, programmes, followed, plugin_
 
 Kotlin sources (app: io/github/petebutty/viewarr/):
   data/sports/GameMatch.kt     -> norm, aliases, GameMatch scoring
-  data/sports/SkySchedule.kt   -> SkySchedule
   data/sports/Sports.kt        -> ESPN fetches, SportFollow decoding, leagues
   data/guide/SportsEvents.kt   -> PLACEHOLDER / clean() / SPORTS (sport detection)
   ui/home/ClubChannels.kt      -> ClubChannels
@@ -478,7 +477,7 @@ class Cache:
     """What's kept between compute() rounds (the caller may hold one and pass it in; else a module-wide one is used).
     ESPN scoreboards / schedules: 5 min while one of the follow's games is live, starts within 3 h or was live in
     the last half hour, else 60 min for a league and 6 h for a team's schedule and results (see games_ttl()); an
-    empty answer 15 min. Headline 2 min, Sky's days 6 h, the UK listings 6 h. (Score alerts don't depend on this:
+    empty answer 15 min. Headline 2 min, the UK listings 6 h. (Score alerts don't depend on this:
     alerts.py polls the live games' scoreboards itself.)"""
     GAMES_TTL = 5 * MIN          # a follow with something on (live, soon, or just finished)
     LEAGUE_TTL = 60 * MIN        # a league with nothing on soon
@@ -487,7 +486,6 @@ class Cache:
     HOT_AHEAD = 3 * H
     HOT_AFTER = 30 * MIN
     HEADLINE_TTL = 2 * MIN
-    SKY_TTL = 6 * H
     UK_TTL = 6 * H
 
     def __init__(self):
@@ -496,8 +494,6 @@ class Cache:
         self.live_seen = {}   # shortcutId -> when a fetch last found one of its games live (ms)
         self.not_in = {}      # "team|competition" -> at ms (24 h)
         self.headline = None  # (at ms, [Game])
-        self.sky_days = {}    # date -> (at ms, [showing])
-        self.sky_rest = 0     # after Sky didn't answer: left alone 10 minutes
         self.uk = None        # (at ms, [listing])
         self.uk_rest = 0      # after the listings site said 429 / 503: an hour
 
@@ -811,82 +807,6 @@ def follow_games(http, f, now_ms, pool, cache):
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# SkySchedule.kt
-
-_SKY_BASE = ""  # Sky listings, e.g. https://awk.epgsky.com + /hawk/linear/schedule (empty: not used)
-_SKY_CHANNELS = [
-    ("4002", "Sky Sports Main Event"), ("4010", "Sky Sports Premier League"), ("3939", "Sky Sports Football"),
-    ("3940", "Sky Sports+"), ("4022", "Sky Sports Action"), ("4090", "Sky Sports Mix"), ("4081", "Sky Sports Cricket"),
-    ("4026", "Sky Sports Golf"), ("3835", "Sky Sports F1"), ("1284", "Sky Sports Tennis"), ("4032", "Sky Sports Racing"),
-    ("1035", "Sky Sports Box Office"),
-    ("3625", "TNT Sports 1"), ("3627", "TNT Sports 2"), ("3629", "TNT Sports 3"), ("4040", "TNT Sports 4"),
-    ("1336", "TNT Sports Ultimate"), ("1210", "TNT Sports Box Office"),
-    ("1289", "Premier Sports 1"), ("1290", "Premier Sports 2"),
-    ("3000", "BBC One"), ("2082", "BBC One"), ("2075", "BBC Two"), ("6504", "ITV1"), ("4075", "Channel 4"),
-    ("4058", "Channel 5"), ("2296", "S4C"), ("3021", "BBC Alba"), ("1003", "MUTV"), ("3845", "LFCTV"),
-]
-_SKY_NAME = dict(_SKY_CHANNELS)
-_SKY_LIVE = re.compile(r"^live\b", re.I)
-_SKY_REPLAY = re.compile(r"\b(hlts|highlights|replay|rewind|classic|greatest|preview|review|reaction|best of)\b", re.I)
-
-
-def _sky_day(http, d, now_ms, cache):
-    """SkySchedule.day: one day's listings for the Sky ids (≤ 20 a request), kept 6 hours."""
-    with cache.lock:
-        c = cache.sky_days.get(d)
-        if c and now_ms - c[0] < cache.SKY_TTL:
-            return c[1]
-        if now_ms < cache.sky_rest:
-            return c[1] if c else None
-        if not _SKY_BASE:
-            return None
-        out = []
-        ids = [k for k, _ in _SKY_CHANNELS]
-        for i in range(0, len(ids), 20):
-            batch = ids[i:i + 20]
-            ok, _, body = http.json("%s/%s/%s" % (_SKY_BASE, d.strftime("%Y%m%d"), ",".join(batch)),
-                                    {"X-SkyOTT-Territory": "GB"})
-            if not ok or body is None:
-                cache.sky_rest = now_ms + 10 * MIN
-                return c[1] if c else None
-            for s in _arr(body, "schedule"):
-                name = _SKY_NAME.get(_str(s, "sid"))
-                if name is None:
-                    continue
-                for e in _arr(s, "events"):
-                    st = _long(_str(e, "st"))
-                    if st is None:
-                        continue
-                    dur = _long(_str(e, "d")) or 0
-                    t = _str(e, "t") or ""
-                    out.append({"channel": name, "title": t, "start": st * 1000, "end": (st + dur) * 1000,
-                                "match": " " + norm(t) + " "})
-        for k in [k for k in cache.sky_days if k < d - timedelta(days=2)]:
-            del cache.sky_days[k]
-        cache.sky_days[d] = (now_ms, out)
-        return out
-
-
-def sky_find(http, g, now_ms, cache):
-    """SkySchedule.find: None (out of range / no answer), ([], "", 0) (in range, not there), or (channels, title, start)."""
-    kick = datetime.fromtimestamp(g.start / 1000, timezone.utc).date()
-    today = datetime.fromtimestamp(now_ms / 1000, timezone.utc).date()
-    if kick < today or kick > today + timedelta(days=7):
-        return None
-    lists = [_sky_day(http, kick, now_ms, cache), _sky_day(http, kick - timedelta(days=1), now_ms, cache) if kick > today else []]
-    shows = [s for l in lists if l is not None for s in l]
-    if not shows:
-        return None
-    hits = [s for s in shows if g.start - 3 * H <= s["start"] <= g.start + H and s["end"] > g.start
-            and not _SKY_REPLAY.search(s["title"]) and norm_text_is_game(s["match"], g) == SURE]
-    if not hits:
-        return [], "", 0
-    best = sorted(hits, key=lambda s: (not _SKY_LIVE.search(s["title"]), abs(s["start"] - g.start)))
-    top = best[0]
-    return _oset(s["channel"] for s in best if s["title"] == top["title"]), top["title"], top["start"]
-
-
-# ---------------------------------------------------------------------------------------------------------------
 # GuideViewModel.kt: ukMatch, blackout
 
 def _blackout(g):
@@ -901,14 +821,9 @@ def _blackout(g):
 
 
 def uk_match(http, g, now_ms, uk_listings, cache):
-    """GuideViewModel.ukMatch: Sky's guide, then the UK Sport on TV plugin's listings, then the 3pm blackout.
-    (TheSportsDB, the app's last resort, is skipped.) Returns (channels, sureness, listing, source) or None."""
-    try:
-        sky = sky_find(http, g, now_ms, cache)
-    except Exception:
-        sky = None
-    if sky is not None and sky[0]:
-        return sky[0], SURE, "%s (%s)" % (sky[1], _hhmm(sky[2])), "Sky TV guide"
+    """GuideViewModel.ukMatch: the UK Sport on TV plugin's listings, then the 3pm blackout. (Sky's own schedule, which
+    the app also asks, isn't used: the house's guide has the same games. TheSportsDB, the app's last resort, is
+    skipped.) Returns (channels, sureness, listing, source) or None."""
     if uk_listings is not None:
         best = None
         for m in uk_listings:
@@ -921,8 +836,8 @@ def uk_match(http, g, now_ms, uk_listings, cache):
             return best[0][3], best[1], "%s v %s" % (best[0][1], best[0][2]), "UK TV listings"
         if g.league.startswith("soccer/") and any(m[0] >= g.start for m in uk_listings):
             return [NOT_ON_UK_TV], SURE, None, "UK TV listings"
-    if sky is not None and _blackout(g):
-        return [NOT_ON_UK_TV], SURE, None, "Sky TV guide"
+    if _blackout(g):
+        return [NOT_ON_UK_TV], SURE, None, "UK TV listings"
     return None
 
 
@@ -1022,12 +937,6 @@ def fetch_follow_games(follow, http_get=None, now_s=None, cache=None, log=None):
     now = int((now_s if now_s is not None else _time.time()) * 1000)
     with ThreadPoolExecutor(max_workers=6) as pool:
         return follow_games(_Http(http_get, log), follow, now, pool, cache or DEFAULT_CACHE)
-
-
-def fetch_sky_day(day, http_get=None, now_s=None, cache=None, log=None):
-    """Sky's listings for one UTC date (kept 6 hours): [{"channel", "title", "start" ms, "end" ms, "match"}] or None."""
-    now = int((now_s if now_s is not None else _time.time()) * 1000)
-    return _sky_day(_Http(http_get, log), day, now, cache or DEFAULT_CACHE)
 
 
 def _uk_listings(raw):
@@ -1237,14 +1146,12 @@ class Placer:
             sure = m is None or m[1] == SURE
             src = m[3] if m else "UK TV listings"
             why = "%s: %s" % (src, said)
-            if m and m[3] == "Sky TV guide" and m[2] is not None:
-                why += ', "%s"' % m[2]
             if said.lower() != c["name"].lower():
                 why += " (your channel %s)" % c["name"]
             if not sure:
                 why += '. Possible match only: the listing is "%s"' % (m[2] if m else None)
             others = [x for x in (self.by_name(n) for n in named if n != said) if x is not None]
-            return c, (SURE if sure else POSSIBLE), why, ("sky" if src == "Sky TV guide" else "plugin"), others
+            return c, (SURE if sure else POSSIBLE), why, "plugin", others
         c = self.event_channel(g, now_ms)
         if c is not None:
             return c, SURE, "An event channel named after the match: %s" % c["name"], "event", []
@@ -1274,13 +1181,15 @@ class Placer:
 
 class _GuideIndex:
     """The app's searchProgramsEnding over the caller's programmes: titles containing a word (case-insensitive), ending
-    in a window, soonest first, at most 60 (the app's SQL LIMIT)."""
+    in a window, soonest first, at most 60 (the app's SQL LIMIT). The sub-title counts as part of the title: Schedules
+    Direct lists a game as "Live: NHL Hockey" with the teams in the sub-title."""
 
     def __init__(self, progs, chan_by_id):
         self.chan = chan_by_id
         self.by_title = {}
         for p in progs:
-            self.by_title.setdefault(p["title"].lower(), []).append(p)
+            key = (p["title"] + (" " + p["sub_title"] if p.get("sub_title") else "")).lower()
+            self.by_title.setdefault(key, []).append(p)
         self.titles = list(self.by_title)
         self._word = {}
 
@@ -1455,7 +1364,7 @@ def compute(now_s, channels, programmes, followed, plugin_groups, http_get=None,
 
     uk_listings (optional): the UK football listings ([[start ms, home, away, competition, [channels]], ...] or that as
       JSON text), e.g. a copy of fetch_uk_listings() the caller keeps; None: fetched here (at most every 6 h via [cache]).
-    cache (optional): a Cache kept between rounds (ESPN, Sky, UK listings); None: the module-wide one.
+    cache (optional): a Cache kept between rounds (ESPN, UK listings); None: the module-wide one.
     """
     cache = cache or DEFAULT_CACHE
     t0 = _time.time()
@@ -1594,7 +1503,7 @@ def compute(now_s, channels, programmes, followed, plugin_groups, http_get=None,
     _prune(out, now // 1000)
     if log:
         log("sports: %d follows, %d games, %d live, %d programmes, %d requests, %.1fs (ESPN and UK listings %.1fs, "
-            "programmes %.1fs, placing incl. Sky schedule %.1fs)" % (
+            "programmes %.1fs, placing %.1fs)" % (
                 len(follows), len(games_out), len(live), len(progs), http.count, _time.time() - t0, t_games - t0,
                 t_progs - t_games, t_place - t_progs))
     return out

@@ -1,7 +1,7 @@
 """What the plugin did last, one line per job, for the Activity page in Viewarr (admins only).
 
 Built from each round's status (server.py) and kept in ``_data/viewarr/activity.json`` so a job that runs less often
-than every round (the TV guide, JustWatch, measuring at night) keeps showing its last run. Written to app data key
+than every round (JustWatch, measuring at night) keeps showing its last run. Written to app data key
 ``viewarr_activity`` for every active admin (Dispatcharr user level 10 or more), only when something in it changed:
 
     {"v": 1, "at": 1795445820,
@@ -27,8 +27,6 @@ JOBS = (
     ("reports", "Reports from the TVs", None),
     ("measure", "Measuring streams", None),
     ("timeshift", "Live timeshift", None),
-    ("guide", "TV guide (Sky)", None),
-    ("logos", "Channel logos", None),
     ("just_added", "Just added (JustWatch)", "just_added"),
     ("watch", "IPTV progress sync", "watch_sync"),
 )
@@ -137,34 +135,6 @@ def _lines(st, fn, problems, data_dir, now):
                 out["timeshift"] = (at, "Ready: /data/timeshift (%s, %d GB free), %s buffering now" % (
                     where, free, _n(t.get("buffers", 0), "channel")), "ok")
 
-    g = st.get("guide")
-    if g is not None:
-        if not g.get("on"):
-            out["guide"] = (at, "Switched off", "off")
-        elif g.get("error"):
-            out["guide"] = (g.get("at"), "Problem: %s" % g["error"], "problem")
-        elif g.get("at"):
-            c = g.get("counts") or {}
-            out["guide"] = (g["at"], "%s: %s matched, %s programmes%s" % (
-                g.get("region") or "Sky", _n(c.get("matched", 0), "channel"), "{:,}".format(c.get("programmes", 0)),
-                (", %d failed requests" % c["failed"]) if c.get("failed") else ""),
-                "problem" if c.get("failed") else "ok")
-
-    lg = st.get("logos")
-    if lg is not None:
-        if not lg.get("mode") or lg.get("mode") == "off":
-            out["logos"] = (at, "Switched off", "off")
-        elif lg.get("at"):
-            bits = []
-            if lg.get("filled"):
-                bits.append("%d filled in" % lg["filled"])
-            if lg.get("replaced"):
-                bits.append("%d replaced" % lg["replaced"])
-            if lg.get("put_back"):
-                bits.append("%d put back" % lg["put_back"])
-            out["logos"] = (lg["at"], (", ".join(bits) if bits else "Checked, nothing to change")
-                            + " (%d changed by the plugin in all)" % lg.get("changed", 0), "ok")
-
     ja = st.get("just_added")
     if not fn.get("just_added", True):
         out["just_added"] = (at, "Switched off", "off")
@@ -245,6 +215,8 @@ def update(status, fn, data_dir, problems=None, log=None):
                 last = _last_report_change(data_dir)
                 if last:
                     saved[job] = {"at": _last_report_at(data_dir) or now, "text": "Last change: " + last, "state": "ok"}
+    for job in ("guide", "logos"):     # (removed in 0.6.8)
+        saved.pop(job, None)
     _save(data_dir, saved)
     items = [dict(id=job, name=name, **saved[job]) for job, name, _ in JOBS if job in saved]
     blob = json.dumps(items, sort_keys=True)

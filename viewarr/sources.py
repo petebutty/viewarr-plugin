@@ -12,7 +12,6 @@ from urllib.parse import urlparse
 SOURCES = {
     "sports": ("src_sports", "https://site.api.espn.com"),
     "uk_tv": ("src_uk_tv", "https://www.live-footballontv.com"),
-    "sky": ("src_sky", "https://awk.epgsky.com"),
     "justwatch": ("src_justwatch", "https://apis.justwatch.com"),
 }
 MARK = "sources_set"
