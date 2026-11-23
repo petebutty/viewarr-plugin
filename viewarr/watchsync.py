@@ -15,6 +15,7 @@ them and admins. Every few minutes, for each such user and server:
 The newer change wins (5 s leeway between clocks), as Viewarr's own sync between TVs does.
 """
 
+import calendar
 import json
 import time
 import urllib.error
@@ -23,6 +24,7 @@ import urllib.request
 
 PROGRESS_KEY = "viewarr_vod_progress"
 SERVERS_KEY = "viewarr_watch_servers"
+MAX_BYTES = 120_000           # Dispatcharr allows 128 KiB per stored value
 LEEWAY = 5
 INDEX_TTL = 3600
 TICKS = 10_000_000
@@ -60,7 +62,7 @@ def _when(item):
     """The item's last played time (epoch s) from its UserData, or 0."""
     s = ((item.get("UserData") or {}).get("LastPlayedDate") or "")[:19]
     try:
-        return int(time.mktime(time.strptime(s, "%Y-%m-%dT%H:%M:%S")) - time.timezone) if s else 0
+        return int(calendar.timegm(time.strptime(s, "%Y-%m-%dT%H:%M:%S"))) if s else 0
     except ValueError:
         return 0
 
@@ -189,18 +191,41 @@ DATA_DIR = None  # set by server.py: where the big Plex lookup lists are kept be
 PLEX_INDEX_TTL = 24 * 3600
 
 
+def _index_name(srv):
+    """The file a Plex server's lookup lists are kept in (in DATA_DIR)."""
+    import hashlib
+    key = (srv.get("url"), (srv.get("token") or "")[-6:])
+    return "plex_index_%s.json" % hashlib.sha1(("%s|%s" % key).encode()).hexdigest()[:12]
+
+
+def sweep_indexes(keep, log=None):
+    """Deletes the Plex lookup files no user's watch sync uses any more ([keep]: the file names still in use)."""
+    import os
+    if not DATA_DIR or not os.path.isdir(DATA_DIR):
+        return 0
+    n = 0
+    for name in os.listdir(DATA_DIR):
+        if name.startswith("plex_index_") and name.endswith(".json") and name not in keep:
+            try:
+                os.remove(os.path.join(DATA_DIR, name))
+                n += 1
+            except OSError:
+                pass
+    if n and log:
+        log("watch sync: %d Plex lookup file(s) no longer used deleted" % n)
+    return n
+
+
 def _plex_index(srv):
     """Films and shows by TMDB id: {tmdb: ratingKey} each. Only needed to mark something not yet played on Plex; a big
     library (80,000 titles) takes minutes to list, so it's kept 24 hours, on disk too."""
-    import hashlib
     import os
     key = (srv["url"], srv["token"][-6:])
     hit = _index.get(key)
     if hit and time.time() - hit[0] < PLEX_INDEX_TTL:
         return hit[1], hit[2]
-    path = None
-    if DATA_DIR:
-        path = os.path.join(DATA_DIR, "plex_index_%s.json" % hashlib.sha1(("%s|%s" % key).encode()).hexdigest()[:12])
+    path = os.path.join(DATA_DIR, _index_name(srv)) if DATA_DIR else None
+    if path:
         try:
             with open(path, encoding="utf-8") as f:
                 at, mv, sh = json.load(f)
@@ -365,11 +390,13 @@ def run(log=None):
     from django.db import close_old_connections
 
     close_old_connections()
-    users = pulled = pushed = 0
+    users = pulled = pushed = too_big = 0
+    in_use = set()
     for row in UserAppData.objects.filter(key=SERVERS_KEY):
         servers = [s for s in ((row.value or {}).get("servers") or []) if isinstance(s, dict)]
         if not servers:
             continue
+        in_use |= {_index_name(s) for s in servers if s.get("kind") == "plex" and s.get("url") and s.get("token")}
         prog_row = UserAppData.objects.filter(user_id=row.user_id, key=PROGRESS_KEY).first()
         progress = prog_row.value if prog_row and isinstance(prog_row.value, dict) else {}
         new, changed, (a, b) = sync_user(progress, servers, log)
@@ -377,9 +404,45 @@ def run(log=None):
         pulled += a
         pushed += b
         if changed:
-            size = len(json.dumps(new, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
-            if size <= 120_000:
-                UserAppData.objects.update_or_create(user_id=row.user_id, key=PROGRESS_KEY,
-                                                     defaults={"value": new, "byte_size": size})
+            ours = {k: e for k, e in new.items() if progress.get(k) != e}
+            if not _save_progress(row.user_id, progress, ours, log):
+                too_big += 1
     close_old_connections()
-    return {"users": users, "pulled": pulled, "pushed": pushed}
+    sweep_indexes(in_use, log)
+    out = {"users": users, "pulled": pulled, "pushed": pushed}
+    if too_big:
+        out["too_big"] = too_big
+    return out
+
+
+def _save_progress(user_id, before, ours, log=None):
+    """The entries this sync took from the servers ([ours]) into the user's viewarr_vod_progress, re-read under a row
+    lock just before saving: the servers can take a while to answer, and a TV may have saved its own progress in the
+    meantime. An entry is taken only when the TV hasn't changed it since the sync read it ([before]), or when ours is
+    newer. Returns False when the result is over Dispatcharr's limit (not saved, and said so in the log)."""
+    from django.db import transaction
+    from apps.accounts.models import UserAppData
+    with transaction.atomic():
+        row = UserAppData.objects.select_for_update().filter(user_id=user_id, key=PROGRESS_KEY).first()
+        fresh = dict(row.value) if row is not None and isinstance(row.value, dict) else {}
+        applied = 0
+        for k, e in ours.items():
+            cur = fresh.get(k)
+            if cur == before.get(k) or int((cur or {}).get("updated_at") or 0) < int(e.get("updated_at") or 0):
+                fresh[k] = e
+                applied += 1
+        if not applied:
+            return True
+        size = len(json.dumps(fresh, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+        if size > MAX_BYTES:
+            if log:
+                log("watch sync: user %s's watch progress is too big to save (%d KB, the limit is %d KB); %d update(s) "
+                    "from the servers not saved" % (user_id, size // 1024, MAX_BYTES // 1024, applied))
+            return False
+        if row is None:
+            UserAppData.objects.create(user_id=user_id, key=PROGRESS_KEY, value=fresh, byte_size=size)
+        else:
+            row.value = fresh
+            row.byte_size = size
+            row.save(update_fields=["value", "byte_size", "updated_at"])
+    return True

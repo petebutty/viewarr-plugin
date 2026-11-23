@@ -48,7 +48,7 @@ If the plugin is missing or stops, the TVs go back to doing the work themselves.
 ### When asked
 
 - **Backups** of an admin's whole Viewarr setup (Viewarr → Settings → Users & profiles → Backups). The settings are saved, and sign-ins are encrypted with the admin's own Dispatcharr key. The newest 30 are kept, in Dispatcharr's plugin data folder, reachable only by admins.
-- **Sports service status** and **Refresh sports now** buttons on the plugin's page in Dispatcharr.
+- **Sports service status** and **Refresh sports now** buttons on the plugin's page in Dispatcharr (a refresh is queued: the service runs the round within a minute).
 - **Preview stream order** (shows what would change now, changing nothing) and **Put stream order back**, **Undo a change**, **Recent changes from reports** and **Measure streams now** buttons (see below).
 - **TV guide status**, **Fetch the TV guide now** and **Compare guide with another source** buttons (see [TV guide (Sky)](#tv-guide-sky)).
 - **Channel logos status** and **Preview channel logos** buttons (see [Channel logos](#channel-logos)).
@@ -69,14 +69,14 @@ Left alone: channels with a single stream, and channels in the groups [Event Cha
 
 Dispatcharr only records a stream's picture size and codec (`stream_stats`, shown in Viewarr's Sources menu) when the stream plays through its proxy, so most streams are never measured and Best stream first has to trust the names. With **Measure streams at night** on (the default), the plugin measures them itself:
 
-- **When:** only inside the **Measuring window** (default 01:00-07:00, the server's local time), one stream at a time, a few seconds each. Empty window: never on a schedule.
+- **When:** only inside the **Measuring window** (default 01:00-07:00, in the time zone set in Dispatcharr's own settings), one stream at a time, a few seconds each. Empty window: never on a schedule.
 - **What:** every stream linked to a real channel whose stats are missing or more than 30 days old. Event Channel Managarr's groups are never measured.
 - **Order:** the channel groups in **Measure these channel groups first** (default: Entertainment, Movies, Sports, News, Kids, Music, UK Regional, Club TV), in that order, each group finished before the next; then any other group alphabetically, unless **Measure only the listed groups** is on. Within a group, the **Provider to measure first** (default: the one with the most left) comes first, in channel-number order.
 - **Your lines:** the provider counts every connection, including this one. With two or more lines, a probe only runs while one line would still be left free for watching; with a single line, only while nobody is watching. After each probe there's a short pause (longer after a failure), because providers keep counting a connection for a moment after it closes.
 - **How:** `ffprobe` with the account's user agent (or Dispatcharr's default), a 20-second limit, reading the first video and audio stream. The result is written exactly as Dispatcharr writes its own (`resolution`, `source_fps`, `video_codec`, `pixel_format`, `audio_codec`, `audio_channels`, `sample_rate`, `stream_type`).
 - **Failures:** a stream that can't be measured is left alone for a week; after three failures it counts as a failing stream for Best stream first.
 
-The log says which group it is working through ("Measuring: Entertainment, 212 left"), and **Sports service status** shows tonight's count. **Measure streams now** runs one batch of up to 20 at any time of day (about 2½ minutes at most), still respecting your lines.
+The log says which group it is working through ("Measuring: Entertainment, 212 left"), and **Sports service status** shows tonight's count. **Measure streams now** queues one batch of up to 20 at any time of day: it starts within a minute and takes about 2½ minutes at most, still respecting your lines (the result shows in **Sports service status**).
 
 ## Reports from the TV
 
@@ -151,7 +151,7 @@ An optional guide for your channels made straight from Sky's own listings (the o
 
 **What it does**
 
-- **Twice a day** (04:30 and 16:30, the server's local time), straight away when switched on, and a few minutes after you change its settings, it reads Sky's channel list for your region.
+- **Twice a day** (04:30 and 16:30, in the time zone set in Dispatcharr's own settings), straight away when switched on, and a few minutes after you change its settings, it reads Sky's channel list for your region.
 - **Matching.** It matches the channels in your lineup (enabled in a channel profile) to Sky's by name: case, accents, "HD" / "FHD", provider prefixes such as "UK:", "&" / "and", Sky's shortened names ("SkySpMainEvHD" is Sky Sports Main Event), known renames (Sky One is Sky Showcase) and region words ("BBC One Scotland", STV, UTV). "+1", UHD and numbers must agree exactly, and two different regions never match. Exact names are taken; close names (fuzzy, with a threshold) are taken too, more readily when your channel number is the same as Sky's. Overrides win over all of it.
 - **Listings** for the matched Sky channels only, for **TV guide: days ahead** (up to 8). Politely: two requests at a time with a pause after each, up to three tries with growing waits, and a longer pause if Sky says to slow down. Whatever fails keeps its last good listings; one log line per run gives the counts.
 - **The guide file**: `/data/logos/viewarr-epg/guide.xml`, served by Dispatcharr at `/logos/viewarr-epg/guide.xml`, written to a temporary file and renamed, so it's never read half-written. Channel ids are `sky.<Sky service id>` (stable); each programme has its title, episode title, description, category, picture, season and episode (`xmltv_ns`) when Sky gives them, and new, live, HD and subtitles flags.

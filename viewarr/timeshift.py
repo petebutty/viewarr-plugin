@@ -52,6 +52,13 @@ DEFAULT_WINDOW_MIN = 120
 DEFAULT_MAX = 3
 # Refused below this much free space (a 2-hour HD buffer is about 6 GB).
 MIN_FREE_BYTES = 10 * 1024 ** 3
+# While buffers run, free space is looked at every SPACE_EVERY_S; below LOW_FREE_BYTES the newest buffer is stopped
+# (and that channel left alone for LOW_SPACE_REST_S), so a filling disk never fills up completely.
+LOW_FREE_BYTES = 5 * 1024 ** 3
+SPACE_EVERY_S = 60
+LOW_SPACE_REST_S = 300
+# suggest_storage() writes a probe file in each place: its answer is kept this long for the status.
+SUGGEST_TTL_S = 3600
 RESTARTS = 5
 RESTART_WINDOW_S = 600
 ENTRY_TTL_S = 600
@@ -105,10 +112,22 @@ def _place_info(path):
         return None
 
 
-def suggest_storage():
+_suggested = {"at": 0.0, "value": None}
+
+
+def suggest_storage(fresh=False):
     """The suggested place, and why: the TV recordings folder when it's a separate disk or share mapped into the
     container (its own device) with more free space than Dispatcharr's data folder; otherwise the data folder.
-    Returns (choice, {"data": free GB or None, "recordings": free GB or None}, reason)."""
+    Returns (choice, {"data": free GB or None, "recordings": free GB or None}, reason). Kept for SUGGEST_TTL_S (the
+    status asks every round) unless [fresh]."""
+    if not fresh and _suggested["value"] is not None and time.time() - _suggested["at"] < SUGGEST_TTL_S:
+        return _suggested["value"]
+    value = _suggest_storage()
+    _suggested.update(at=time.time(), value=value)
+    return value
+
+
+def _suggest_storage():
     data = _place_info(os.path.dirname(ROOT))  # /data/logos
     rec_dir = os.path.dirname(STORAGE["recordings"])  # /data/recordings
     rec = _place_info(rec_dir) if os.path.isdir(rec_dir) else None
@@ -130,7 +149,7 @@ def use_storage(storage, log=None):
     """Points ROOT at the chosen place: a plain folder, or a link to the recordings folder's hidden folder. Only
     called with no buffer running (anything left in the old place is cleared)."""
     if storage == "auto":
-        storage, free, why = suggest_storage()
+        storage, free, why = suggest_storage(fresh=True)
         if log:
             log("timeshift: automatic buffer folder: %s (%s; free GB %s)" % (storage, why, free))
     real = STORAGE.get(storage)
@@ -244,8 +263,9 @@ class Buffer:
                 pass
 
 
-def sweep(log=None):
-    """Leftovers from an earlier run (a crash or a restart of Dispatcharr): stray ffmpeg copies and their folders."""
+def sweep(log=None, log_dir=None):
+    """Leftovers from an earlier run (a crash or a restart of Dispatcharr): stray ffmpeg copies, their folders and
+    their ffmpeg logs (ts_*.log in [log_dir])."""
     killed = 0
     try:
         for pid in os.listdir("/proc"):
@@ -269,8 +289,17 @@ def sweep(log=None):
         for name in os.listdir(ROOT):
             shutil.rmtree(os.path.join(ROOT, name), ignore_errors=True)
             left += 1
-    if log and (killed or left):
-        log("timeshift: cleared %d leftover buffer folder(s), %d stray ffmpeg" % (left, killed))
+    logs = 0
+    if log_dir and os.path.isdir(log_dir):
+        for name in os.listdir(log_dir):
+            if name.startswith("ts_") and name.endswith(".log"):
+                try:
+                    os.remove(os.path.join(log_dir, name))
+                    logs += 1
+                except OSError:
+                    pass
+    if log and (killed or left or logs):
+        log("timeshift: cleared %d leftover buffer folder(s), %d stray ffmpeg, %d old log(s)" % (left, killed, logs))
 
 
 class Manager:
@@ -286,11 +315,12 @@ class Manager:
         self.on, self.window_s, self.most = True, DEFAULT_WINDOW_MIN * 60, DEFAULT_MAX
         self.settings_at = 0.0
         self.published = {}  # user id → the reply last written to them
+        self.space_at = 0.0
 
     # ---- the loop
 
     def run(self, stop):
-        sweep(self.log)
+        sweep(self.log, self.log_dir)
         try:
             while not stop.is_set():
                 try:
@@ -362,6 +392,10 @@ class Manager:
         if not self.on:
             wanted = {}
         changed = False
+        # (Failed starts whose wait is over are forgotten.)
+        for uuid in [u for u, t in self.failed_until.items() if t <= now]:
+            self.failed_until.pop(uuid, None)
+        changed = self._check_space(now) or changed
         # Let go of what nobody wants any more.
         for uuid in [u for u in self.buffers if u not in wanted]:
             b = self.buffers.pop(uuid)
@@ -419,6 +453,26 @@ class Manager:
             self.refused.pop(uuid)
             changed = True
         self._publish(users, changed)
+
+    def _check_space(self, now):
+        """Every SPACE_EVERY_S while buffers run: below LOW_FREE_BYTES free, the newest buffer is stopped (refused
+        "low disk space", that channel left alone LOW_SPACE_REST_S). True when one was stopped."""
+        if not self.buffers or now - self.space_at < SPACE_EVERY_S:
+            return False
+        self.space_at = now
+        try:
+            st = os.statvfs(ROOT)
+            free = st.f_bavail * st.f_frsize
+        except OSError:
+            return False
+        if free >= LOW_FREE_BYTES:
+            return False
+        uuid = max(self.buffers, key=lambda u: self.buffers[u].started_at)
+        self.buffers.pop(uuid).kill()
+        self.refused[uuid] = "low disk space"
+        self.failed_until[uuid] = now + LOW_SPACE_REST_S
+        self.log("timeshift: stopped %s: low disk space (%.1f GB free in the buffer folder)" % (uuid, free / 1e9))
+        return True
 
     def _refuse_reason(self):
         if len(self.buffers) >= self.most:

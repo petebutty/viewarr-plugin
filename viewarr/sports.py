@@ -476,8 +476,16 @@ _SEP, _REC = "\u001f", "\u001e"
 
 class Cache:
     """What's kept between compute() rounds (the caller may hold one and pass it in; else a module-wide one is used).
-    ESPN scoreboards / schedules 5 min (the app: 10), headline 2 min, Sky's days 6 h, the UK listings 6 h."""
-    GAMES_TTL = 5 * MIN
+    ESPN scoreboards / schedules: 5 min while one of the follow's games is live, starts within 3 h or was live in
+    the last half hour, else 60 min for a league and 6 h for a team's schedule and results (see games_ttl()); an
+    empty answer 15 min. Headline 2 min, Sky's days 6 h, the UK listings 6 h. (Score alerts don't depend on this:
+    alerts.py polls the live games' scoreboards itself.)"""
+    GAMES_TTL = 5 * MIN          # a follow with something on (live, soon, or just finished)
+    LEAGUE_TTL = 60 * MIN        # a league with nothing on soon
+    TEAM_TTL = 6 * H             # a team's schedule and results with nothing on soon
+    EMPTY_TTL = 15 * MIN         # an empty answer (or a failed fetch)
+    HOT_AHEAD = 3 * H
+    HOT_AFTER = 30 * MIN
     HEADLINE_TTL = 2 * MIN
     SKY_TTL = 6 * H
     UK_TTL = 6 * H
@@ -485,6 +493,7 @@ class Cache:
     def __init__(self):
         self.lock = threading.Lock()
         self.games = {}       # shortcutId -> (at ms, [Game])
+        self.live_seen = {}   # shortcutId -> when a fetch last found one of its games live (ms)
         self.not_in = {}      # "team|competition" -> at ms (24 h)
         self.headline = None  # (at ms, [Game])
         self.sky_days = {}    # date -> (at ms, [showing])
@@ -761,14 +770,34 @@ def _league_games(http, league, now_ms, pool, horizon_days):
     return sorted(out, key=lambda g: g.start)
 
 
+def games_ttl(f, games, now_ms, cache):
+    """How long a follow's cached games stay good, judged now (not when fetched, so a game drawing near makes an
+    old copy stale): short while something is live, starts within 3 hours (or should have started) or was live in
+    the last half hour; else long."""
+    if not games:
+        return cache.EMPTY_TTL
+    if now_ms - cache.live_seen.get(f["sid"], 0) < cache.HOT_AFTER:
+        return cache.GAMES_TTL
+    for g in games:
+        if g.state == "in" or (g.state == "pre" and g.start <= now_ms + cache.HOT_AHEAD):
+            return cache.GAMES_TTL
+    return cache.TEAM_TTL if f["kind"] == "Team" else cache.LEAGUE_TTL
+
+
 def follow_games(http, f, now_ms, pool, cache):
-    """SportsRepository.games: a follow's games (cached 5 minutes; an empty answer isn't kept)."""
+    """SportsRepository.games: a follow's games, cached for games_ttl()."""
     c = cache.games.get(f["sid"])
-    if c and now_ms - c[0] < cache.GAMES_TTL:
+    if c and now_ms - c[0] < games_ttl(f, c[1], now_ms, cache):
         return c[1]
     gs = _team_games(http, f, now_ms, pool, cache) if f["kind"] == "Team" else _league_games(http, f["league"], now_ms, pool, 4)
-    if gs:
+    if any(g.state == "in" for g in gs):
+        cache.live_seen[f["sid"]] = now_ms
+    if gs or not c:
         cache.games[f["sid"]] = (now_ms, gs)
+    else:
+        # (Nothing came back but there was a copy: keep it, and ask again in a quarter of an hour.)
+        cache.games[f["sid"]] = (now_ms - games_ttl(f, c[1], now_ms, cache) + cache.EMPTY_TTL, c[1])
+        return c[1]
     return gs
 
 
@@ -976,7 +1005,7 @@ def fetch_headline(http_get=None, now_s=None, cache=None, log=None):
 
 
 def fetch_follow_games(follow, http_get=None, now_s=None, cache=None, log=None):
-    """A follow's ESPN games (kept 5 minutes). [follow]: one of decode_follows()'s dicts."""
+    """A follow's ESPN games (kept for games_ttl()). [follow]: one of decode_follows()'s dicts."""
     now = int((now_s if now_s is not None else _time.time()) * 1000)
     with ThreadPoolExecutor(max_workers=6) as pool:
         return follow_games(_Http(http_get, log), follow, now, pool, cache or DEFAULT_CACHE)
@@ -1433,6 +1462,10 @@ def compute(now_s, channels, programmes, followed, plugin_groups, http_get=None,
 
     # 1: games (SportsHub.load step 1 + headline for Live now).
     follows = decode_follows(followed)
+    sids = {f["sid"] for f in follows}
+    for sid in [k for k in cache.games if k not in sids]:   # (follows nobody has any more)
+        cache.games.pop(sid, None)
+        cache.live_seen.pop(sid, None)
     win_lo, win_hi = now - 3 * H, now + 3 * DAY
     known, shown_ids = {}, set()
     fol_games = {}
@@ -1451,6 +1484,7 @@ def compute(now_s, channels, programmes, followed, plugin_groups, http_get=None,
             head = headline(http, now, cache)
         except Exception:
             head = []
+    t_games = _time.time()
     order = []  # followed games first (shown lists, then the 3-day window), then headline extras
     for f in follows:
         all_ = fol_games.get(f["sid"], [])
@@ -1476,12 +1510,15 @@ def compute(now_s, channels, programmes, followed, plugin_groups, http_get=None,
 
     def take(ps):
         for p in ps or []:
-            try:
-                d = {"channel_id": p["channel_id"], "title": p.get("title") or "", "sub_title": p.get("sub_title"),
-                     "description": p.get("description"), "start": int(p["start_s"]) * 1000,
-                     "end": int(p["end_s"]) * 1000, "is_live": bool(p.get("is_live")), "image": p.get("image")}
-            except Exception:
-                continue
+            if "start_s" not in p and "start" in p:
+                d = p  # (already in this shape, times in ms: the plugin's reader hands them so, saving a copy each)
+            else:
+                try:
+                    d = {"channel_id": p["channel_id"], "title": p.get("title") or "", "sub_title": p.get("sub_title"),
+                         "description": p.get("description"), "start": int(p["start_s"]) * 1000,
+                         "end": int(p["end_s"]) * 1000, "is_live": bool(p.get("is_live")), "image": p.get("image")}
+                except Exception:
+                    continue
             k = (d["channel_id"], d["start"], d["title"])
             if k not in seen:
                 seen.add(k)
@@ -1529,6 +1566,8 @@ def compute(now_s, channels, programmes, followed, plugin_groups, http_get=None,
         if soon(g) and c is not None and sure == SURE:
             live_games.append((g, c, ch[1] if ch else None))
 
+    t_place = _time.time()
+
     # 4: Live now (SportsHub.liveGames -> GuideViewModel.liveEventsNow).
     live_ids = {c["id"] for c in live_chans}
     on_now, soon_l = live_events_now(now, live_chans, [p for p in progs if p["channel_id"] in live_ids],
@@ -1541,8 +1580,10 @@ def compute(now_s, channels, programmes, followed, plugin_groups, http_get=None,
     out = {"v": 1, "at": int(now_s), "live": live, "games": games_out}
     _prune(out, now // 1000)
     if log:
-        log("sports: %d follows, %d games, %d live, %d programmes, %d requests, %.1fs (programmes %.1fs)" % (
-            len(follows), len(games_out), len(live), len(progs), http.count, _time.time() - t0, t_progs - t0))
+        log("sports: %d follows, %d games, %d live, %d programmes, %d requests, %.1fs (ESPN and UK listings %.1fs, "
+            "programmes %.1fs, placing incl. Sky schedule %.1fs)" % (
+                len(follows), len(games_out), len(live), len(progs), http.count, _time.time() - t0, t_games - t0,
+                t_progs - t_games, t_place - t_progs))
     return out
 
 

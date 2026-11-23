@@ -25,6 +25,18 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
+
+def _load_clock():
+    """clock.py beside this file (the house's local time; Dispatcharr's own processes run in UTC)."""
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location("viewarr_clock", os.path.join(os.path.dirname(os.path.abspath(__file__)), "clock.py"))
+    mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+clock = _load_clock()
+
 STATE_FILE = "measure.json"
 RETRY_DAYS = 7
 STALE_DAYS = 30
@@ -37,6 +49,9 @@ DEFAULT_WINDOW = "01:00-07:00"
 DEFAULT_GROUPS = "Entertainment, Movies, Sports, News, Kids, Music, UK Regional, Club TV"
 NOW_LIMIT = 20
 NOW_SECONDS = 150
+# "Measure now" (plugin.py) leaves this file in the data folder rather than probing in the web request; the thread
+# below picks it up within a minute and runs the batch.
+NOW_FLAG = "measure_now.flag"
 
 _lock = threading.Lock()  # one probe at a time, whichever thread or action asks
 
@@ -59,7 +74,7 @@ def window_open(spec, now=None):
     w = parse_window(spec)
     if not w or w[0] == w[1]:
         return False
-    t = datetime.fromtimestamp(now or time.time())
+    t = clock.local_now(now or time.time())
     mins = t.hour * 60 + t.minute
     start, end = w
     return start <= mins < end if start < end else (mins >= start or mins < end)
@@ -68,7 +83,7 @@ def window_open(spec, now=None):
 def night_key(spec, now=None):
     """The date the current (or most recent) window started on: the counters' name for "tonight"."""
     w = parse_window(spec)
-    t = datetime.fromtimestamp(now or time.time())
+    t = clock.local_now(now or time.time())
     if w and t.hour * 60 + t.minute < w[0]:
         t -= timedelta(days=1)
     return t.strftime("%Y-%m-%d")
@@ -421,11 +436,34 @@ def run_batch(data_dir, settings, limit, log=None, ignore_window=False, stop=Non
 
 # ---- The thread
 
+def take_flag(data_dir, name):
+    """True (and the file gone) when the flag file [name] was left in the data folder."""
+    try:
+        os.remove(os.path.join(data_dir, name))
+        return True
+    except OSError:
+        return False
+
+
+def _run_now(stop, data_dir, settings, log):
+    res = run_batch(data_dir, settings, NOW_LIMIT, ignore_window=True, seconds=NOW_SECONDS, log=log, stop=stop)
+    if log:
+        log("measure: \"Measure now\": %d measured, %d failed, %s left%s" % (
+            res["done"], res["failed"], res["left"] if res["left"] is not None else "?",
+            "; the provider had no line free" if res["busy"] and not res["done"] else ""))
+    with _lock:
+        st = load_state(data_dir)
+        st["last_now"] = dict(res, at=int(time.time()))
+        save_state(data_dir, st)
+
+
 def _loop(stop, data_dir, settings_fn, log):
     next_log = 0
     while not stop.is_set():
         try:
             settings = settings_fn() or {}
+            if take_flag(data_dir, NOW_FLAG):
+                _run_now(stop, data_dir, settings, log)
             on = settings.get("measure_on", True) is not False
             if on and window_open(settings.get("measure_window", DEFAULT_WINDOW)):
                 res = run_batch(data_dir, settings, limit=10, log=log, stop=stop)

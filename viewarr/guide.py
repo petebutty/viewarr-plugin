@@ -33,6 +33,18 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from xml.sax.saxutils import escape, quoteattr
 
+
+def _load_clock():
+    """clock.py beside this file (the house's local time; Dispatcharr's own processes run in UTC)."""
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location("viewarr_clock", os.path.join(os.path.dirname(os.path.abspath(__file__)), "clock.py"))
+    mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+clock = _load_clock()
+
 UA = "Viewarr-Plugin/0.6 (+https://github.com/petebutty/viewarr-plugin)"
 
 OUT_DIR = "/data/logos/viewarr-epg"
@@ -49,6 +61,7 @@ BACKUP_FILE = "guide_backup.json"
 CACHE_FILE = "guide_cache.json.gz"
 LOGO_STATE_FILE = "logo_state.json"   # written by logos.py (channel logos from Sky / tv-logos)
 LOCK_FILE = "guide.lock"
+REFRESH_FLAG = "guide_refresh.flag"   # left by the "Fetch the TV guide now" button; the thread runs it within a minute
 
 RUN_AT = ((4, 30), (16, 30))     # local times of the twice-daily fetch
 TICK_S = 60                      # how often the thread looks at its settings
@@ -1025,7 +1038,7 @@ def status_text(data_dir, settings):
     if not st.get("last_run"):
         return "TV guide is on; the first fetch hasn't finished yet." + (" Last problem: " + st["error"] if st.get("error") else "")
     c = st.get("counts") or {}
-    when = time.strftime("%a %H:%M", time.localtime(st["last_run"]))
+    when = clock.strftime("%a %H:%M", st["last_run"])
     applied = len(backup.get("channels") or {})
     lines = ["TV guide: %s %s, fetched %s: %d of %d channels matched to %d %s channels, %d programmes for %d day(s) "
              "(%d requests, %d failed). %s" % (
@@ -1042,7 +1055,7 @@ def status_text(data_dir, settings):
         mine = [per.get(cid) for cid in (st.get("matches") or {})]
         lines.append("Logos (%s, %s): last run %d filled, %d replaced, %d put back; of the matched channels %d have the "
                      "logo from Sky, %d from tv-logos, %d kept their own." % (
-                         lg.get("mode"), time.strftime("%a %H:%M", time.localtime(lg["at"])), lg.get("filled", 0),
+                         lg.get("mode"), clock.strftime("%a %H:%M", lg["at"]), lg.get("filled", 0),
                          lg.get("replaced", 0), lg.get("put_back", 0), mine.count("sky"), mine.count("tv-logos"),
                          mine.count("kept")))
     else:
@@ -1153,9 +1166,9 @@ def _last_slot(now):
     """The most recent scheduled run time (04:30 or 16:30 local) at or before now."""
     best = 0
     for back in (0, 1):
-        day = time.localtime(now - back * 86400)
+        day = clock.local_today(now - back * 86400)
         for h, m in RUN_AT:
-            t = time.mktime((day.tm_year, day.tm_mon, day.tm_mday, h, m, 0, 0, 0, -1))
+            t = clock.local_epoch(day, h, m)
             if best < t <= now:
                 best = t
     return best
@@ -1212,11 +1225,27 @@ def run_now(data_dir, settings, stop=None, log=None):
     return state, status_text(data_dir, settings)
 
 
+def take_flag(data_dir, name):
+    """True (and the file gone) when the flag file [name] was left in the data folder."""
+    try:
+        os.remove(os.path.join(data_dir, name))
+        return True
+    except OSError:
+        return False
+
+
+def fetch_running(data_dir):
+    """True while a guide fetch holds the lock (in any process)."""
+    with _Lock(data_dir) as got:
+        return not got
+
+
 def _tick(data_dir, settings_fn, stop, log, mem):
     from django.db import close_old_connections
     close_old_connections()
     settings = settings_fn() or {}
     cfg = config(settings)
+    asked = take_flag(data_dir, REFRESH_FLAG)   # ("Fetch now": dropped while the guide is off)
     spath = os.path.join(data_dir, STATE_FILE)
     state = _load_json(spath, {})
     now = time.time()
@@ -1241,7 +1270,8 @@ def _tick(data_dir, settings_fn, stop, log, mem):
     last_run = state.get("last_run") or 0
     last_try = state.get("last_attempt") or 0
     due = (
-        not state.get("on")                                                   # just switched on
+        asked                                                                 # the "Fetch now" button
+        or not state.get("on")                                                # just switched on
         or (state.get("sig_run") != cfg["sig"] and now - last_try >= SETTLE_S)  # region, days or overrides changed
         or last_run < _last_slot(now) and now - last_try >= SETTLE_S          # 04:30 / 16:30
         or (state.get("error") and now - last_try >= RETRY_FAILED_S)          # the last try got nothing

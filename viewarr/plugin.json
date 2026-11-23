@@ -490,7 +490,7 @@
     {
       "id": "server_refresh",
       "label": "Refresh sports now",
-      "description": "Work out Live now and the games straight away."
+      "description": "Asks the sports service to work out Live now and the games straight away: the round starts within a minute (see \"Sports service status\")."
     },
     {
       "id": "stream_order_plan",
@@ -520,7 +520,7 @@
     {
       "id": "measure_now",
       "label": "Measure streams now",
-      "description": "One batch of up to 20 streams straight away, ignoring the window (up to about 2\u00bd minutes). A provider's spare line is still respected: nothing is probed while that would take the last line."
+      "description": "One batch of up to 20 streams, ignoring the window: queued for the measuring thread, it starts within a minute and takes up to about 2\u00bd minutes (the results show in the sports service status). A provider's spare line is still respected: nothing is probed while that would take the last line."
     },
     {
       "id": "guide_status",
@@ -530,7 +530,7 @@
     {
       "id": "guide_refresh",
       "label": "Fetch the TV guide now",
-      "description": "Reads Sky's channel list and listings straight away (about a minute), rewrites the guide file and refreshes the \"Viewarr: Sky guide\" source."
+      "description": "Queues a fetch of Sky's channel list and listings: it starts within a minute and takes about a minute; it rewrites the guide file and refreshes the \"Viewarr: Sky guide\" source."
     },
     {
       "id": "guide_compare",
@@ -545,7 +545,7 @@
     {
       "id": "logos_preview",
       "label": "Preview channel logos",
-      "description": "What \"Channel logos from Sky\" would change right now, without changing anything (optional parameters \"mode\" = missing / all and \"sources\" = sky_tvlogos / sky / tvlogos to try other settings). The first preview can take a few minutes while logo addresses are checked."
+      "description": "What \"Channel logos from Sky\" would change right now, without changing anything (optional parameters \"mode\" = missing / all and \"sources\" = sky_tvlogos / sky / tvlogos to try other settings). It only uses logo addresses already checked, so it answers quickly; ones not checked yet are counted as not judged until the next run checks them."
     }
   ],
   "manifest_version": 1,

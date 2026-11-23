@@ -4,7 +4,7 @@ TMDB (and so AIOMetadata's "New" catalogues) knows which service has a title but
 newly added, or a new season of an existing show, never comes to the front there. JustWatch tracks the day each title
 arrived on each service. This asks JustWatch's own web feed (the one its "What's new" pages use; there's no official
 public API) for the last DAYS days, splits it by service, and leaves the lists in every user's app data
-(viewarr_just_added), as the sports results are left. Peter, 2026-11-20.
+(viewarr_just_added), as the sports results are left (2026-11-20).
 
 Light by design: one request per day looked back (all services together, a page of up to 100), once a day. Failures
 wait for the next day (no retries).
@@ -13,7 +13,19 @@ import json
 import os
 import time
 import urllib.request
-from datetime import date, timedelta
+from datetime import timedelta
+
+
+def _load_clock():
+    """clock.py beside this file (the house's local time; Dispatcharr's own processes run in UTC)."""
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location("viewarr_clock", os.path.join(os.path.dirname(os.path.abspath(__file__)), "clock.py"))
+    mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+clock = _load_clock()
 
 KEY = "viewarr_just_added"
 DAYS = 14
@@ -95,7 +107,7 @@ def build(log=None):
     """The lists: {service name: [items, newest first]} for the last DAYS days."""
     lists = {name: [] for name, _ in SERVICES}
     seen = {name: set() for name, _ in SERVICES}
-    today = date.today()
+    today = clock.local_today()
     for back in range(DAYS):
         day = (today - timedelta(days=back)).isoformat()
         after = None
@@ -125,13 +137,13 @@ def run(data_dir, log=None):
     """Once a day (after 05:00): fetch, publish to every active user. Returns a short status, or None when not due."""
     os.makedirs(data_dir, exist_ok=True)
     mark = os.path.join(data_dir, "just_added_day.txt")
-    today = date.today().isoformat()
+    today = clock.local_today().isoformat()
     try:
         if open(mark).read().strip() == today:
             return None
     except Exception:
         pass
-    if time.localtime().tm_hour < 5:
+    if clock.local_now().hour < 5:
         return None
     # Tried for today whatever happens: a failure waits for tomorrow, never a retry every round.
     with open(mark, "w") as f:

@@ -43,6 +43,9 @@ def watch_list(games, now):
 def check(games, log=None):
     """One quick look at the live games' scoreboards; returns True when there are new alerts."""
     now = time.time()
+    # (Games no longer in the round's results are forgotten, so this never grows.)
+    for gid in [g for g in _prev if g not in games]:
+        _prev.pop(gid, None)
     live = watch_list(games, now)
     if not live:
         return False

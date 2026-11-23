@@ -13,8 +13,6 @@ import json
 import os
 import re
 import time
-import urllib.error
-import urllib.request
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 try:
@@ -32,19 +30,15 @@ _KEEP = 30
 _ID = re.compile(r"^[0-9]{13}$")
 
 
-def parse_away(text):
-    """'home = away' lines → list of (home, away). Blank lines and lines starting with # are skipped."""
-    pairs = []
-    for raw in (text or "").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        home, away = (part.strip() for part in line.split("=", 1))
-        if home and away:
-            if "://" not in away:
-                away = "https://" + away
-            pairs.append((home, away))
-    return pairs
+def _hhmm(ts):
+    """HH:MM in the house's time zone (clock.py: Dispatcharr's processes run in UTC)."""
+    try:
+        spec = importlib.util.spec_from_file_location("viewarr_clock", os.path.join(_HERE, "clock.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.strftime("%H:%M", ts)
+    except Exception:
+        return time.strftime("%H:%M", time.gmtime(ts)) + " UTC"
 
 
 class Plugin:
@@ -92,7 +86,7 @@ class Plugin:
             return {"status": "success", "message": "The sports service hasn't finished a round yet."}
         if st.get("error"):
             return {"status": "error", "message": "Last round failed: " + st["error"], "result": st}
-        when = time.strftime("%H:%M", time.localtime(st.get("at", 0)))
+        when = _hhmm(st.get("at", 0))
         return {"status": "success", "result": st, "message":
                 f"Last round {when}: {st.get('live', 0)} live now, {st.get('games', 0)} games placed, "
                 f"{st.get('bytes', 0) // 1024} KB to {st.get('users', 0)} users in {st.get('seconds', 0)} s; "
@@ -128,7 +122,7 @@ class Plugin:
         if not g.get("on"):
             return "off"
         c = g.get("counts") or {}
-        when = time.strftime("%H:%M", time.localtime(g["at"])) if g.get("at") else "not fetched yet"
+        when = _hhmm(g["at"]) if g.get("at") else "not fetched yet"
         return (f"{g.get('region') or ''} {when}, {c.get('matched', 0)} channels matched, "
                 f"{c.get('programmes', 0)} programmes, {g.get('applied', 0)} channel(s) pointed at it")
 
@@ -174,12 +168,19 @@ class Plugin:
 
     def _guide_refresh(self, context):
         settings = (context or {}).get("settings") or {}
-        log = (context or {}).get("logger")
         try:
-            state, msg = self._module("guide").run_now(_DATA, settings, log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+            guide = self._module("guide")
+            if not guide.config(settings)["on"]:
+                return {"status": "error", "message": "The TV guide is switched off in the plugin's settings."}
+            if guide.fetch_running(_DATA):
+                return {"status": "success", "queued": False,
+                        "message": "A guide fetch is already running; it takes a minute or two."}
+            self._queue(guide.REFRESH_FLAG)
         except Exception as exc:
-            return {"status": "error", "message": f"Couldn't fetch the guide: {exc}"}
-        return {"status": "success" if state is not None and not state.get("error") else "error", "message": msg}
+            return {"status": "error", "message": f"Couldn't queue a guide fetch: {exc}"}
+        return {"status": "success", "queued": True,
+                "message": "Guide fetch queued: it starts within a minute and takes a minute or two (see \"TV guide "
+                           "status\")."}
 
     def _guide_compare(self, params, context):
         settings = (context or {}).get("settings") or {}
@@ -204,18 +205,19 @@ class Plugin:
         return f"{m.get('done_tonight', 0)} tonight, {m.get('failed', 0)} failed, {left if left is not None else '?'} left{group}"
 
     def _measure_now(self, context):
-        """One batch of up to 20 probes straight away, ignoring the window but never the provider's spare line."""
-        settings = (context or {}).get("settings") or {}
-        log = (context or {}).get("logger")
+        """One batch of up to 20 probes, ignoring the window but never the provider's spare line: queued for the
+        measuring thread (it can take a few minutes, too long for a web request)."""
         try:
             ms = self._module("measure")
-            res = ms.run_batch(_DATA, settings, ms.NOW_LIMIT, ignore_window=True, seconds=ms.NOW_SECONDS,
-                               log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+            self._queue(ms.NOW_FLAG)
+            last = (ms.load_state(_DATA).get("last_now") or {})
         except Exception as exc:
-            return {"status": "error", "message": f"Couldn't measure: {exc}"}
-        busy = "; the provider had no line free" if res["busy"] and not res["done"] else ""
-        return {"status": "success", "result": res,
-                "message": f"Measured {res['done']}, failed {res['failed']}, {res['left']} still to do{busy}."}
+            return {"status": "error", "message": f"Couldn't queue measuring: {exc}"}
+        prev = (f" Last time ({_hhmm(last['at'])}): measured {last.get('done', 0)}, failed {last.get('failed', 0)}, "
+                f"{last.get('left') if last.get('left') is not None else '?'} still to do." if last.get("at") else "")
+        return {"status": "success", "queued": True, "result": last or None,
+                "message": f"Measuring queued: up to {ms.NOW_LIMIT} streams, starting within a minute (the results "
+                           f"show in the plugin status).{prev}"}
 
     # ---- Best stream first and reports from the TVs (streamorder.py, reports.py), run by the service each round.
 
@@ -262,20 +264,23 @@ class Plugin:
         except Exception as exc:
             return {"status": "error", "message": f"Couldn't read the change log: {exc}"}
 
+    @staticmethod
+    def _queue(flag):
+        """Leaves [flag] in the data folder for the service's threads, which pick it up within a minute (long jobs
+        don't run inside the web request, where the web server gives up after a few minutes)."""
+        os.makedirs(_DATA, exist_ok=True)
+        with open(os.path.join(_DATA, flag), "w", encoding="utf-8") as f:
+            f.write(str(int(time.time())))
+
     def _server_refresh(self, context):
-        log = (context or {}).get("logger")
         try:
-            st = self._server().publish(log)
+            self._queue("refresh.flag")      # (server.REFRESH_FLAG)
         except Exception as exc:
-            return {"status": "error", "message": f"Couldn't refresh: {exc}"}
-        try:
-            os.makedirs(_DATA, exist_ok=True)
-            with open(self._status_path, "w", encoding="utf-8") as f:
-                json.dump(st, f)
-        except Exception:
-            pass
-        return {"status": "success", "result": st,
-                "message": f"Refreshed: {st.get('live', 0)} live now, {st.get('games', 0)} games placed."}
+            return {"status": "error", "message": f"Couldn't queue a refresh: {exc}"}
+        last = self._server_status()
+        return {"status": "success", "result": last.get("result"), "queued": True,
+                "message": "Refresh queued: the sports service runs a round within a minute. Until then: "
+                           + last.get("message", "")}
 
     def run(self, action, params, context):
         params = params or {}
@@ -283,8 +288,6 @@ class Plugin:
             return self._server_status()
         if action == "server_refresh":
             return self._server_refresh(context)
-        if action == "check":
-            return self._check((context or {}).get("settings") or {})
         if action == "stream_order_plan":
             return self._stream_order_plan()
         if action == "stream_order_reset":
@@ -317,6 +320,10 @@ class Plugin:
             return self._backup_delete(params)
         return {"status": "error", "message": f"Unknown action '{action}'."}
 
+    # (backup_save / backup_list / backup_get / backup_delete are called by Viewarr itself and left out of plugin.json
+    # on purpose: Dispatcharr's manifest has no way to hide an action, so each would show as a button on the plugin's
+    # page that does nothing useful there. Manifest version 1 lets undeclared actions run; a move to version 2 would
+    # need them declared.)
     # Backups: Viewarr's whole setup as Viewarr saves it (its settings, and its sign-ins already encrypted on the TV
     # with the admin's own key). Admins only: Dispatcharr lets only admins run plugin actions.
 
@@ -377,23 +384,3 @@ class Plugin:
         except OSError:
             return {"status": "error", "message": "That backup isn't there."}
         return {"status": "success", "message": "Backup deleted."}
-
-    def _check(self, settings):
-        pairs = parse_away(settings.get("away", ""))
-        if not pairs:
-            return {"status": "success", "message": "No outside addresses set yet."}
-        lines = []
-        bad = 0
-        for home, away in pairs:
-            try:
-                req = urllib.request.Request(away.rstrip("/") + "/", headers={"User-Agent": "Viewarr-Plugin/0.5 (+https://github.com/petebutty/viewarr-plugin)"})
-                with urllib.request.urlopen(req, timeout=6) as r:
-                    lines.append(f"{away}: answers ({r.status})")
-            except urllib.error.HTTPError as e:
-                # Any HTTP answer (even 401/404 from a locked-down front page) means the address is reachable.
-                lines.append(f"{away}: answers ({e.code})")
-            except Exception as e:
-                bad += 1
-                lines.append(f"{away}: no answer ({type(e).__name__})")
-        status = "success" if bad == 0 else "error"
-        return {"status": status, "message": "\n".join(lines)}

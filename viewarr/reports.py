@@ -26,6 +26,18 @@ import re
 import time
 
 
+def _load_clock():
+    """clock.py beside this file (the house's local time; Dispatcharr's own processes run in UTC)."""
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location("viewarr_clock", os.path.join(os.path.dirname(os.path.abspath(__file__)), "clock.py"))
+    mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+clock = _load_clock()
+
+
 def _streamorder():
     spec = importlib.util.spec_from_file_location("viewarr_streamorder", os.path.join(os.path.dirname(os.path.abspath(__file__)), "streamorder.py"))
     mod = importlib.util.module_from_spec(spec)
@@ -376,7 +388,7 @@ def status_text(data_dir):
     state = load_state(data_dir)
     lines = []
     for c in reversed(state["changes"][-10:]):
-        when = time.strftime("%d %b %H:%M", time.localtime(c.get("at", 0)))
+        when = clock.strftime("%d %b %H:%M", c.get("at", 0))
         lines.append("%s  %s: %s (%s)%s  id %s" % (when, c.get("channel_name"), c.get("what"), c.get("by"),
                                                    "  [undone]" if c.get("undone") else "", c.get("id")))
     picks = len(state["needs_pick"])

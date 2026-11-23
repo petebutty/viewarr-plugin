@@ -34,6 +34,18 @@ import time
 import urllib.error
 import urllib.request
 
+
+def _load_clock():
+    """clock.py beside this file (the house's local time; Dispatcharr's own processes run in UTC)."""
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location("viewarr_clock", os.path.join(os.path.dirname(os.path.abspath(__file__)), "clock.py"))
+    mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+clock = _load_clock()
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 UA = "Viewarr-Plugin/0.6 (+https://github.com/petebutty/viewarr-plugin)"
@@ -138,10 +150,11 @@ _MAGIC = (b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"RIFF", b"<svg", b"<?xm", b"\x0
 
 
 class Checker:
-    def __init__(self, data_dir, stop=None):
+    def __init__(self, data_dir, stop=None, limit=MAX_CHECKS):
         self.path = os.path.join(data_dir, URLS_FILE)
         self.cache = _load_json(self.path, {})
         self.stop = stop
+        self.limit = limit
         self.checked = 0
         self.dirty = False
 
@@ -169,7 +182,7 @@ class Checker:
         hit = self.cache.get(url)
         if hit and now - hit[1] < (URL_OK_TTL if hit[0] else URL_BAD_TTL):
             return bool(hit[0])
-        if self.checked >= MAX_CHECKS or (self.stop is not None and self.stop.is_set()):
+        if self.checked >= self.limit or (self.stop is not None and self.stop.is_set()):
             return None if not hit else bool(hit[0])
         self.checked += 1
         good = self._fetch(url)
@@ -358,7 +371,9 @@ def run(data_dir, settings, stop=None, log=None, dry=False):
     backup = _load_json(bpath, {})
     chans = backup.setdefault("channels", {})        # str(id): {"prev", "set", "src", "url"}
     hands_off = set(str(x) for x in backup.get("hands_off") or [])
-    checker = Checker(data_dir, stop)
+    # (The preview, run while someone waits on the button, only uses addresses already checked and the last tv-logos
+    # listing: no new checks or fetches, so it answers in a second or two; what it can't judge counts as "waiting".)
+    checker = Checker(data_dir, stop, limit=0 if dry else MAX_CHECKS)
     res = {"filled": 0, "replaced": 0, "put_back": 0, "kept": 0, "released": 0, "waiting": 0,
            "from_sky": 0, "from_tvlogos": 0, "channels": {}, "dry": dry, "mode": cfg["mode"]}
     examples = []
@@ -366,7 +381,7 @@ def run(data_dir, settings, stop=None, log=None, dry=False):
     sky, guide_run = (_sky_logos(data_dir) if (cfg["on"] and cfg["sky"]) else ({}, None))
     index = by_key = None
     if cfg["on"] and cfg["tvlogos"]:
-        files = tvlogos_files(data_dir, cfg["country"], log=log, fetch=True)
+        files = tvlogos_files(data_dir, cfg["country"], log=log, fetch=not dry)
         index = tvlogos_index(files, cfg["country"])
         by_key = {}
         for item in index:
@@ -563,7 +578,7 @@ def status_text(data_dir, settings):
         return "Channel logos are off." + (" %d channel(s) still to be put back." % s["changed"] if s["changed"] else "")
     if not s["at"]:
         return "Channel logos are on (%s); the first run hasn't finished yet." % cfg["mode"]
-    when = time.strftime("%a %H:%M", time.localtime(s["at"]))
+    when = clock.strftime("%a %H:%M", s["at"])
     return ("Channel logos (%s, %s), last run %s: %d channel(s) use a logo from Sky, %d from tv-logos; %d kept their "
             "own; %d changed by the plugin in all (put back when switched off); %d changed by hand since, left alone."
             % (cfg["mode"], {"sky_tvlogos": "Sky, then tv-logos", "sky": "Sky only", "tvlogos": "tv-logos only"}[cfg["sources"]],
@@ -575,7 +590,8 @@ def preview_text(res):
             "%d from Sky, %d from tv-logos" % (res["filled"], res["replaced"], res["put_back"], res["kept"],
                                                res["from_sky"], res["from_tvlogos"]))
     if res.get("waiting"):
-        head += "; %d not checked yet (too many to check at once)" % res["waiting"]
+        head += ("; %d not judged (the preview only uses logo addresses already checked; the next run checks the rest)"
+                 if res.get("dry") else "; %d not checked yet (too many to check at once)") % res["waiting"]
     return head + "." + ((" For example: " + "; ".join(res["examples"][:25])) if res.get("examples") else "")
 
 
@@ -585,8 +601,7 @@ def preview_text(res):
 def _last_slot(now):
     best = 0
     for back in (0, 1):
-        day = time.localtime(now - back * 86400)
-        t = time.mktime((day.tm_year, day.tm_mon, day.tm_mday, RUN_AT[0], RUN_AT[1], 0, 0, 0, -1))
+        t = clock.local_epoch(clock.local_today(now - back * 86400), RUN_AT[0], RUN_AT[1])
         if best < t <= now:
             best = t
     return best

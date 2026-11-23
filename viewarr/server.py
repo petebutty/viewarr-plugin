@@ -102,11 +102,16 @@ def _channels():
     return out
 
 
-# The guide's programmes, kept between rounds (Peter, 2026-11-20: every round read ~145,000 programmes again, 8-25 s).
+# The guide's programmes, kept between rounds (2026-11-20: every round read ~145,000 programmes again, 8-25 s).
 # Only what changed is read: a new guide refresh (a source's updated_at / message, or new programme rows) starts the
-# copy again; otherwise only a stretch of time not read yet is fetched. Read again in full every 30 minutes anyway, in
-# case something edited programmes in place.
+# copy again; otherwise only a stretch of time not read yet is fetched. Read again in full every FULL_RELOAD_S anyway,
+# in case something edited programmes in place.
+# Only the guide entries of the house's lineup are kept (channels enabled in a channel profile, radio left out, as
+# guide.lineup() decides): a game placed on a channel no profile shows couldn't be watched on any TV. Of each
+# description only the start is kept (sports.py only looks at its first 80 characters, for "Live coverage...").
 _PC = {"stamp": None, "lo": None, "hi": None, "rows": {}, "at": 0.0, "read": 0}
+FULL_RELOAD_S = 3 * 3600
+DESC_KEEP = 80
 
 
 def _guide_stamp():
@@ -116,27 +121,47 @@ def _guide_stamp():
     return (src, ProgramData.objects.aggregate(m=Max("id"))["m"])
 
 
+def _lineup_ids():
+    """The ids of the channels in the house's lineup: enabled in at least one channel profile (every channel when
+    there are no profiles), radio left out. None when it can't be worked out (then every channel counts)."""
+    try:
+        from apps.channels.models import Channel, ChannelProfile, ChannelProfileMembership
+        qs = Channel.objects.filter(is_radio=False)
+        if ChannelProfile.objects.exists():
+            qs = qs.filter(id__in=ChannelProfileMembership.objects.filter(enabled=True).values("channel_id"))
+        return set(qs.values_list("id", flat=True))
+    except Exception:
+        return None
+
+
 def _read_programmes(epg_ids, **where):
     from apps.epg.models import ProgramData
-    rows = ProgramData.objects.filter(epg_id__in=epg_ids, **where).only(
+    rows = ProgramData.objects.filter(epg_id__in=epg_ids, **where).values_list(
         "epg_id", "title", "sub_title", "description", "start_time", "end_time", "custom_properties"
     )
     n = 0
-    for p in rows.iterator(chunk_size=2000):
-        cp = p.custom_properties if isinstance(p.custom_properties, dict) else {}
-        _PC["rows"].setdefault(p.epg_id, []).append((
-            int(p.start_time.timestamp()), int(p.end_time.timestamp()), p.title or "", p.sub_title, p.description,
+    keep = _PC["rows"]
+    for epg_id, title, sub, desc, st, en, cp in rows.iterator(chunk_size=2000):
+        cp = cp if isinstance(cp, dict) else {}
+        keep.setdefault(epg_id, []).append((
+            int(st.timestamp()) * 1000, int(en.timestamp()) * 1000, title or "", sub, (desc or "")[:DESC_KEEP] or None,
             bool(cp.get("live")), cp.get("icon"),
         ))
         n += 1
     _PC["read"] += n
 
 
-def _programmes_for(channels):
-    """The guide reader handed to sports.compute: a channel's programmes between two times (kept between rounds)."""
+def _programmes_for(channels, lineup=None):
+    """The guide reader handed to sports.compute: a channel's programmes between two times (kept between rounds),
+    already in sports.py's own shape (times in ms), so they aren't turned into dicts twice.
+    [lineup]: the channel ids whose guide entries are read (None: every channel's)."""
     from datetime import datetime, timezone
 
     epg_of = {c["id"]: c["_epg"] for c in channels if c.get("_epg")}
+    if lineup is not None:
+        # (A channel outside the lineup sharing a guide entry with one inside costs nothing: it's read anyway.)
+        wanted_epg = {e for cid, e in epg_of.items() if cid in lineup}
+        epg_of = {cid: e for cid, e in epg_of.items() if e in wanted_epg}
     every_epg = sorted(set(epg_of.values()))
     utc = lambda s: datetime.fromtimestamp(s, timezone.utc)
     _PC["read"] = 0
@@ -144,8 +169,8 @@ def _programmes_for(channels):
         stamp = (_guide_stamp(), tuple(every_epg))
     except Exception:
         stamp = None
-    if stamp is None or stamp != _PC["stamp"] or time.time() - _PC["at"] > 1800:
-        _PC.update(stamp=stamp, lo=None, hi=None, rows={}, at=time.time())  # (logos_cleared kept)
+    if stamp is None or stamp != _PC["stamp"] or time.time() - _PC["at"] > FULL_RELOAD_S:
+        _PC.update(stamp=stamp, lo=None, hi=None, rows={}, at=time.time())
 
     def programmes(channel_ids, start_s, end_s):
         wanted = {}
@@ -167,13 +192,14 @@ def _programmes_for(channels):
                 _read_programmes(every_epg, start_time__gte=utc(_PC["hi"]), start_time__lt=utc(end_s))
                 _PC["hi"] = end_s
         out = []
+        lo, hi = start_s * 1000, end_s * 1000
         for e, cids in wanted.items():
             for (st, en, title, sub, desc, live, image) in _PC["rows"].get(e, ()):
-                if en > start_s and st < end_s:
+                if en > lo and st < hi:
                     for cid in cids:
                         out.append({
                             "channel_id": cid, "title": title, "sub_title": sub, "description": desc,
-                            "start_s": st, "end_s": en, "is_live": live, "image": image,
+                            "start": st, "end": en, "is_live": live, "image": image,
                         })
         return out
 
@@ -181,26 +207,9 @@ def _programmes_for(channels):
     cut = int(time.time()) - 12 * 3600
     if _PC["lo"] is not None and _PC["lo"] < cut:
         for e in list(_PC["rows"]):
-            _PC["rows"][e] = [r for r in _PC["rows"][e] if r[1] > cut]
+            _PC["rows"][e] = [r for r in _PC["rows"][e] if r[1] > cut * 1000]
         _PC["lo"] = cut
     return programmes
-
-
-def _forget_title_logos(log=None):
-    if _PC.get("logos_cleared"):
-        return
-    try:
-        from apps.accounts.models import UserAppData
-        n = UserAppData.objects.filter(key__startswith="viewarr_logos").delete()[0]
-        path = os.path.join(os.path.dirname(_HERE), "_data", "viewarr", "logo_cache.json")
-        if os.path.exists(path):
-            os.remove(path)
-        _PC["logos_cleared"] = True
-        if log and n:
-            log.info("Viewarr: title logos removed (%d stored parts cleared)", n)
-    except Exception as exc:
-        if log:
-            log.warning("Viewarr: couldn't clear the old title logos: %s", exc)
 
 
 def _followed():
@@ -360,15 +369,91 @@ def record_wanted(result, channels, log=None):
             record.discard(gid)
             changed = True
         if changed:
-            kept = dict(sorted(done.items(), key=lambda kv: kv[1], reverse=True)[:DONE_KEEP])
-            value = dict(v, record=sorted(record), done=kept)
-            row.value = value
-            row.byte_size = len(json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
-            row.save(update_fields=["value", "byte_size", "updated_at"])
+            _save_game_watch(row.pk, {g: t for g, t in done.items() if g not in (v.get("done") or {})}, log)
     return made
 
 
+def _save_game_watch(pk, newly_done, log=None):
+    """Marks [newly_done] ({game id: ms}) done in a user's viewarr_game_watch, re-read under a row lock just before
+    saving: a TV may have added a game or a team since the round read it, and that mustn't be lost. Only the plugin's
+    own change is applied to the fresh value (those games done and out of "record"); the rest is kept as it is."""
+    from django.db import transaction
+    from apps.accounts.models import UserAppData
+    with transaction.atomic():
+        row = UserAppData.objects.select_for_update().filter(pk=pk).first()
+        if row is None:
+            return
+        fresh = row.value if isinstance(row.value, dict) else {}
+        done = dict(fresh.get("done") or {})
+        done.update(newly_done)
+        kept = dict(sorted(done.items(), key=lambda kv: kv[1], reverse=True)[:DONE_KEEP])
+        record = [g for g in (fresh.get("record") or []) if g not in newly_done]
+        value = dict(fresh, record=sorted(record), done=kept)
+        size = len(json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+        if size > MAX_BYTES:
+            if log:
+                log.warning("Viewarr: game watch list of user %s too big to save (%d bytes); left as it was",
+                            row.user_id, size)
+            return
+        row.value = value
+        row.byte_size = size
+        row.save(update_fields=["value", "byte_size", "updated_at"])
+
+
+# "Refresh sports now" (plugin.py) leaves this file in the data folder instead of running a round inside the web
+# request (where it could overlap the service's own round and make a recording twice); the service loop below looks
+# for it at least once a minute.
+REFRESH_FLAG = "refresh.flag"
+ROUND_LOCK = "sports.lock"
+
+
+class _Lock:
+    """One sports round at a time across processes and threads (a non-blocking lock on a file in the data folder)."""
+
+    def __init__(self, data_dir):
+        self.path = os.path.join(data_dir, ROUND_LOCK)
+        self.f = None
+
+    def __enter__(self):
+        import fcntl
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        self.f = open(self.path, "w")
+        try:
+            fcntl.flock(self.f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            self.f.close()
+            self.f = None
+            return False
+        return True
+
+    def __exit__(self, *a):
+        if self.f is not None:
+            import fcntl
+            fcntl.flock(self.f, fcntl.LOCK_UN)
+            self.f.close()
+            self.f = None
+
+
+def _take_flag(name):
+    try:
+        os.remove(os.path.join(_data_dir(), name))
+        return True
+    except OSError:
+        return False
+
+
 def publish(log=None):
+    """One round (see _publish), never two at once: a round already running elsewhere means this one is skipped
+    (returns {"skipped": ...}), so the recordings and app data are never written by two rounds together."""
+    with _Lock(_data_dir()) as got:
+        if not got:
+            if log:
+                log.info("Viewarr server sports: a round is already running; this one skipped")
+            return {"at": int(time.time()), "skipped": "another round is running"}
+        return _publish(log)
+
+
+def _publish(log=None):
     """One round: compute, then write to every active user. Returns a short status for the logs / the status action."""
     from django.contrib.auth import get_user_model
     from django.db import close_old_connections
@@ -386,7 +471,7 @@ def publish(log=None):
     if fn["live"] or fn["games"]:
         result = _sports().compute(
             int(time.time()), [{k: v for k, v in c.items() if not k.startswith("_")} for c in channels],
-            _programmes_for(channels),
+            _programmes_for(channels, _lineup_ids()),
             # Followed games off: no fixtures or UK listings fetched (Live now still places ESPN's headline games).
             _followed() if fn["games"] else [], _plugin_groups(),
             # (sports.py writes plain lines: log("…"); the plugin's logger is an object.)
@@ -414,9 +499,6 @@ def publish(log=None):
     for user in get_user_model().objects.filter(is_active=True).only("id"):
         UserAppData.objects.update_or_create(user=user, key=APP_KEY, defaults={"value": result, "byte_size": size})
         users += 1
-    # Programme title logos were removed (Peter, 2026-11-20: not needed for the guide; ~72,000 TMDB lookups a day).
-    # What they left behind is cleared once: the parts in each user's app data and the lookup file.
-    _forget_title_logos(log)
     # What's just arrived on each streaming service (justadded.py, JustWatch): once a day, for Viewarr's
     # "<service> · Just added" rows.
     just = None
@@ -434,12 +516,13 @@ def publish(log=None):
     # IPTV watch progress kept in step with each user's Emby / Jellyfin (watchsync.py), for users who switched it on.
     watch = None
     try:
+        ws = _module("watchsync")
+        ws.DATA_DIR = _data_dir()
         if fn["watch_sync"]:
-            ws = _module("watchsync")
-            ws.DATA_DIR = os.path.join(os.path.dirname(_HERE), "_data", "viewarr")
             watch = ws.run(log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
         else:
             watch = {"off": True}
+            ws.sweep_indexes(set(), log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
     except Exception as exc:
         if log:
             log.warning("Viewarr: watch sync failed: %s", exc)
@@ -580,7 +663,8 @@ def service(stop_event, log=None, status_path=None):
         if log:
             log.warning("Viewarr: logos thread didn't start: %s", exc)
     while not stop_event.is_set():
-        if time.time() - last_full >= INTERVAL_S:
+        asked = _take_flag(REFRESH_FLAG)   # ("Refresh sports now")
+        if asked or time.time() - last_full >= INTERVAL_S:
             last_full = time.time()
             try:
                 # A long-lived thread: Django's database connection can go stale between rounds ("round failed" in
@@ -595,7 +679,7 @@ def service(stop_event, log=None, status_path=None):
                 status = {"at": int(time.time()), "error": str(exc)[:300]}
                 if log:
                     log.exception("Viewarr server sports round failed")
-            if status_path:
+            if status_path and not status.get("skipped"):
                 try:
                     with open(status_path, "w", encoding="utf-8") as f:
                         json.dump(status, f)
