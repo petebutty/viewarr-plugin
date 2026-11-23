@@ -11,7 +11,7 @@ import json
 import time
 import urllib.request
 
-ESPN = "https://site.api.espn.com/apis/site/v2/sports"
+ESPN = ""  # the sports data address the admin added (server.apply_sources); empty: no score checks
 KEY = "viewarr_alerts"
 KEEP_S = 30 * 60
 
@@ -21,6 +21,8 @@ _live = {}      # game id → its score now, for the ticker's Live scores: {"tex
 
 
 def _fetch(lp):
+    if not ESPN:
+        return {}
     req = urllib.request.Request(f"{ESPN}/{lp}/scoreboard", headers={"User-Agent": "Viewarr-Plugin/0.5 (+https://github.com/petebutty/viewarr-plugin)", "Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=10) as r:
         return json.loads(r.read().decode("utf-8"))

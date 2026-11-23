@@ -503,7 +503,10 @@ class Cache:
 
 
 DEFAULT_CACHE = Cache()
-_BASE = "https://site.api.espn.com/apis/site/v2/sports"
+# Outside addresses: empty until the admin adds them in the plugin's settings (sources.py; server.apply_sources sets
+# these every round). Empty: that source is never contacted.
+_BASE = ""       # sports data, e.g. https://site.api.espn.com + /apis/site/v2/sports
+_HEADLINE = ""   # the same source's headline games (site.web.api…/apis/v2/scoreboard/header)
 
 
 def decode_follows(followed):
@@ -590,7 +593,9 @@ def headline(http, now_ms, cache):
     c = cache.headline
     if c and now_ms - c[0] < cache.HEADLINE_TTL:
         return c[1]
-    ok, _, body = http.json("https://site.web.api.espn.com/apis/v2/scoreboard/header?lang=en&region=gb")
+    if not _HEADLINE:
+        return []  # (no sports data address added)
+    ok, _, body = http.json(_HEADLINE)
     if not ok or body is None:
         return c[1] if c else []
     out = []
@@ -692,6 +697,8 @@ def _cups_for(league):
 
 def _team_games(http, f, now_ms, pool, cache):
     """SportsRepository.teamGames: fixtures + results in its league, fixtures in its cups and Europe."""
+    if not _BASE:
+        return []  # (no sports data address added)
     cups = [c for c in _cups_for(f["league"])
             if (lambda t: t is None or now_ms - t > 24 * H)(cache.not_in.get("%s|%s" % (f["id"], c)))]
     asks = [("%s/%s/teams/%s/schedule?fixture=true" % (_BASE, f["league"], f["id"]), f["league"]),
@@ -718,6 +725,8 @@ def _team_games(http, f, now_ms, pool, cache):
 def _league_games(http, league, now_ms, pool, horizon_days):
     """SportsRepository.leagueGames: the plain scoreboard, then match days from its calendar. (Only days up to
     [horizon_days] ahead are fetched: compute() reports 3 days, the app's 35-day look-ahead isn't needed.)"""
+    if not _BASE:
+        return []  # (no sports data address added)
     today = datetime.fromtimestamp(now_ms / 1000, _LONDON).date()
 
     def board(q):
@@ -804,7 +813,7 @@ def follow_games(http, f, now_ms, pool, cache):
 # ---------------------------------------------------------------------------------------------------------------
 # SkySchedule.kt
 
-_SKY_BASE = "https://awk.epgsky.com/hawk/linear/schedule"
+_SKY_BASE = ""  # Sky listings, e.g. https://awk.epgsky.com + /hawk/linear/schedule (empty: not used)
 _SKY_CHANNELS = [
     ("4002", "Sky Sports Main Event"), ("4010", "Sky Sports Premier League"), ("3939", "Sky Sports Football"),
     ("3940", "Sky Sports+"), ("4022", "Sky Sports Action"), ("4090", "Sky Sports Mix"), ("4081", "Sky Sports Cricket"),
@@ -829,6 +838,8 @@ def _sky_day(http, d, now_ms, cache):
             return c[1]
         if now_ms < cache.sky_rest:
             return c[1] if c else None
+        if not _SKY_BASE:
+            return None
         out = []
         ids = [k for k, _ in _SKY_CHANNELS]
         for i in range(0, len(ids), 20):
@@ -917,7 +928,7 @@ def uk_match(http, g, now_ms, uk_listings, cache):
 
 # The UK Sport on TV plugin's own fetch + parse (its plugin.py: SOURCE, DATE_RE, FIXTURE_RE, _field, _day, parse), so
 # this plugin needs no other: televised UK football from live-footballontv.com, weeks ahead.
-UK_SOURCE = "https://www.live-footballontv.com/"
+UK_SOURCE = ""  # UK TV listings for games, e.g. https://www.live-footballontv.com/ (empty: not used)
 _UK_DATE_RE = re.compile(r'<div class="fixture-date"[^>]*>(.*?)<', re.S)
 _UK_FIXTURE_RE = re.compile(r'<div class="fixture">(.*?)</div></div></div>', re.S)
 
@@ -974,6 +985,8 @@ def fetch_uk_listings(http_get=None, days_ahead=30, now_s=None, cache=None, log=
         return c[1]
     if now < cache.uk_rest:
         return c[1] if c else []
+    if not UK_SOURCE:
+        return []
     try:
         code, page = (http_get or _default_http_get)(UK_SOURCE, {"Accept": "text/html"})
     except Exception:

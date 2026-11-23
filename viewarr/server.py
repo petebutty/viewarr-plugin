@@ -72,6 +72,32 @@ def _own_settings():
     return (conf.settings or {}) if conf else {}
 
 
+def apply_sources(settings=None, log=None):
+    """Points the helper modules at the outside addresses the admin added (sources.py); an empty one is never
+    contacted. Called at the start of the service and every round, so a changed setting counts from the next round."""
+    try:
+        src = _module("sources")
+        if settings is None:
+            src.upgrade(_data_dir(), log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+            settings = _own_settings()
+        sp, sky = src.base(settings, "sports"), src.base(settings, "sky")
+        uk, jw = src.base(settings, "uk_tv"), src.base(settings, "justwatch")
+        espn = (sp + "/apis/site/v2/sports") if sp else ""
+        mod = _sports()
+        mod._BASE = espn
+        mod._HEADLINE = (sp.replace("://site.api.", "://site.web.api.") + "/apis/v2/scoreboard/header?lang=en&region=gb") if sp else ""
+        mod._SKY_BASE = (sky + "/hawk/linear/schedule") if sky else ""
+        mod.UK_SOURCE = (uk + "/") if uk else ""
+        _module("alerts").ESPN = espn
+        _module("guide").SkyUK.HAWK = (sky + "/hawk/linear") if sky else ""
+        _module("justadded").URL = (jw + "/graphql") if jw else ""
+        return src.summary(settings)
+    except Exception as exc:
+        if log:
+            log.warning("Viewarr: outside sources not applied: %s", exc)
+        return None
+
+
 _SPORTS = None
 
 
@@ -461,8 +487,11 @@ def _publish(log=None):
 
     close_old_connections()
     t0 = time.time()
+    srcs = None
     try:
-        fn = functions(_own_settings())
+        own = _own_settings()
+        fn = functions(own)
+        srcs = apply_sources(own, log)
     except Exception:
         fn = functions({})
     _FN.clear()
@@ -546,6 +575,7 @@ def _publish(log=None):
         "timeshift": _timeshift_status(), "guide": _guide_status(), "logos": _logos_status(), "off": sorted(k for k, on in fn.items() if not on),
         "at": result["at"], "seconds": round(time.time() - t0, 1), "bytes": size, "users": users,
         "live": len(result.get("live", [])), "games": len(result.get("games", {})),
+        "sources": srcs,
     }
     if log:
         log.info("Viewarr server sports: %s", status)
@@ -640,6 +670,9 @@ def service(stop_event, log=None, status_path=None):
     """The persistent service: a full round now, then every INTERVAL_S until Dispatcharr stops it; in between, while a
     game in the results is live (or about to kick off), a quick score check every QUICK_S for alerts (alerts.py)."""
     last_full = 0.0
+    # Outside addresses first (and the one-off upgrade for an install from before they were settings), so the
+    # threads below never start with a stale one.
+    apply_sources(log=log)
     # Measuring streams at night (measure.py) runs in its own thread: a probe can take 20 s, and this loop must keep
     # its five-minute rhythm. It watches the same stop event and the plugin settings (window, on / off).
     try:

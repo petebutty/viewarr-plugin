@@ -137,11 +137,13 @@ def config(settings):
     if country not in COUNTRIES:
         country = DEFAULT_COUNTRY
     guide_on = s.get("guide", False) is True or str(s.get("guide")).lower() == "true"
-    use_sky = sources in ("sky_tvlogos", "sky") and guide_on
+    # (Sky's logos come with the TV guide's matches, and only while a Sky listings address is added.)
+    sky_added = bool(str(s.get("src_sky") or "").strip())
+    use_sky = sources in ("sky_tvlogos", "sky") and guide_on and sky_added
     # tv-logos is switched off until its author has agreed to this use (their README asks apps to ask first): the code
     # stays, but nothing is fetched from it. Set TVLOGOS_ALLOWED once they've said yes.
     use_tvl = TVLOGOS_ALLOWED and sources in ("sky_tvlogos", "tvlogos")
-    sig = json.dumps([mode, sources, country, guide_on])
+    sig = json.dumps([mode, sources, country, guide_on, sky_added])
     return {"mode": mode, "on": mode != "off", "sources": sources, "country": country, "guide_on": guide_on,
             "sky": use_sky, "tvlogos": use_tvl, "sig": sig}
 

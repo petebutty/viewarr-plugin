@@ -69,9 +69,12 @@ def _lines(st, fn, problems, data_dir, now):
     elif not fn.get("live", True) and not fn.get("games", True):
         out["sports"] = (at, "Switched off", "off")
     else:
+        src = st.get("sources") or {}
+        missing = [label for key, label in (("sports", "sports data"), ("uk_tv", "UK TV listings")) if src and not src.get(key)]
         out["sports"] = (at, "%s on now, %s found; sent to %s (took %s s)" % (
             _n(st.get("live", 0), "live event"), _n(st.get("games", 0), "followed game"),
-            _n(st.get("users", 0), "user"), st.get("seconds", "?")), "ok")
+            _n(st.get("users", 0), "user"), st.get("seconds", "?"))
+            + ("; from the guide only, no %s address added" % " or ".join(missing) if missing else ""), "ok")
 
     # Sport recordings: only a round that made one is news; otherwise the last one stays.
     if not fn.get("recordings", True):
@@ -165,6 +168,8 @@ def _lines(st, fn, problems, data_dir, now):
     ja = st.get("just_added")
     if not fn.get("just_added", True):
         out["just_added"] = (at, "Switched off", "off")
+    elif (st.get("sources") or {"justwatch": "?"}).get("justwatch") == "":
+        out["just_added"] = (at, "No Just added address added (plugin settings)", "off")
     elif isinstance(ja, dict) and ja.get("error"):
         out["just_added"] = (at, "Problem: %s" % ja["error"], "problem")
     elif isinstance(ja, dict) and "titles" in ja:

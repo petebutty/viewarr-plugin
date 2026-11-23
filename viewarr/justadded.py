@@ -30,7 +30,7 @@ clock = _load_clock()
 KEY = "viewarr_just_added"
 DAYS = 14
 PER_SERVICE = 20
-URL = "https://apis.justwatch.com/graphql"
+URL = ""  # the Just added address the admin added + /graphql (server.apply_sources); empty: not fetched
 
 # Viewarr's service names (as its catalogue rows start) → JustWatch's UK package short names.
 SERVICES = [
@@ -145,6 +145,8 @@ def run(data_dir, log=None):
         pass
     if clock.local_now().hour < 5:
         return None
+    if not URL:
+        return None  # (no Just added address added)
     # Tried for today whatever happens: a failure waits for tomorrow, never a retry every round.
     with open(mark, "w") as f:
         f.write(today)

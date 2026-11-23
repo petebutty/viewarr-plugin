@@ -16,6 +16,40 @@
       "help_text": "How it works with Viewarr: Viewarr works without this plugin, but then every TV does all the work itself. With it, Dispatcharr does that work once for the house, every 5 minutes, and leaves the answers in each person's own Dispatcharr storage; each TV just reads them.\n\nWhat it does:\n\u2022 Live now and Sports: which games are on, in the leagues and teams anyone follows, and which channel shows each (from Dispatcharr's guide, ESPN, the Sky schedule and UK football TV listings weeks ahead).\n\u2022 Recordings for sport: \"Record all <team>\" or Record on a game that isn't in the guide yet is made as soon as the guide lists it, even with every TV off.\n\u2022 Score alerts and live scores: kick-offs, goals and results, only for the teams each person switches alerts on for (off until they do, in Viewarr \u2192 Settings \u2192 Sports).\n\u2022 Best stream first: each channel's best stream (FHD before HD before SD; streams that keep failing on the TVs drop down) is put first in Dispatcharr, so every app and TV starts on it.\n\u2022 Just added: what arrived on each streaming service in the UK in the last fortnight (films, and new seasons of shows), once a day from JustWatch, for Viewarr's \"<service> \u00b7 Just added\" rows.\n\u2022 Reports from the TVs: wrong guide, guide times out, dead stream, wrong logo or name, reported from Viewarr and applied straight away; each change can be undone.\n\u2022 Measuring streams at night: each stream's real picture size and codec, checked with ffprobe in a quiet window, one at a time, always leaving the provider a line for watching.\n\u2022 Live timeshift: pause, rewind and fast-forward any live channel, from a buffer kept here while it's watched.\n\u2022 TV guide (optional, off by default): Sky's own listings for your region, matched to your channels and added to Dispatcharr as a guide source.\n\u2022 Channel logos (optional, off by default): fills in missing or broken channel logos from Sky (channels the TV guide matched); every change can be put back.\n\u2022 Backups of an admin's Viewarr setup (Viewarr \u2192 Settings \u2192 Users & profiles \u2192 Backups).\n\nEach of these can be switched off below (or from Viewarr \u2192 Settings \u2192 Plugins \u2192 Viewarr); it's then off for the whole house and Viewarr hides it. Nothing needs setting up in Viewarr: a TV finds the plugin by itself. If the plugin stops, the TVs go back to doing the work themselves."
     },
     {
+      "id": "sources_about",
+      "label": "Outside sources (optional)",
+      "type": "info",
+      "help_text": "The plugin contacts no outside site unless you add its address below, like playlist and guide links in Dispatcharr itself. Leave one empty and the features that use it work from your Dispatcharr guide only (or not at all). Each shows an example you can copy. These are free public sites, not run by this plugin's author; you choose whether to use them."
+    },
+    {
+      "id": "src_sports",
+      "label": "Sports data (fixtures, results, live scores)",
+      "type": "string",
+      "default": "",
+      "help_text": "Used for the Sports page, Live now and score checks. Leave empty: games from your guide only.\nExample: https://site.api.espn.com"
+    },
+    {
+      "id": "src_uk_tv",
+      "label": "UK TV listings for games",
+      "type": "string",
+      "default": "",
+      "help_text": "Which UK channel shows each football game, weeks ahead. Leave empty: channels from your guide only.\nExample: https://www.live-footballontv.com"
+    },
+    {
+      "id": "src_sky",
+      "label": "Sky listings",
+      "type": "string",
+      "default": "",
+      "help_text": "Sky's schedule for its sports channels, and the optional TV guide (Sky) and Sky channel logos below. Leave empty: none of these are used.\nExample: https://awk.epgsky.com"
+    },
+    {
+      "id": "src_justwatch",
+      "label": "Just added",
+      "type": "string",
+      "default": "",
+      "help_text": "What's new on each UK streaming service, once a day, for Viewarr's Just added rows. Leave empty: no Just added rows.\nExample: https://apis.justwatch.com"
+    },
+    {
       "id": "live_now",
       "label": "Live now",
       "type": "boolean",

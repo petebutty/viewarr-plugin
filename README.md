@@ -54,6 +54,19 @@ If the plugin is missing or stops, the TVs go back to doing the work themselves.
 - **Channel logos status** and **Preview channel logos** buttons (see [Channel logos](#channel-logos)).
 - **What it did last**, in Viewarr (Settings → Plugins → Viewarr, admins only): one line per job with its last run, for example "Best stream first · 15:06 · 2 channels reordered" or "TV guide (Sky) · 04:31 · Scotland: 140 channels matched". Anything that failed or needs a look says so. Kept up to date every round (app data key `viewarr_activity`, written for admins only).
 
+## Outside sources (optional)
+
+The plugin contacts **no outside site** unless you add its address in the plugin's settings, the same way you add playlist and guide links in Dispatcharr itself. Each setting shows an example you can copy. Leave one empty and the features that use it work from your Dispatcharr guide only, or not at all.
+
+| Setting | Example | Used for | Left empty |
+|---|---|---|---|
+| **Sports data** | `https://site.api.espn.com` | Sports page fixtures, results and live scores; Live now's headline games; score checks | Games from your guide only |
+| **UK TV listings for games** | `https://www.live-footballontv.com` | Which UK channel shows each football game, weeks ahead | Channels from your guide only |
+| **Sky listings** | `https://awk.epgsky.com` | Sky's schedule for its sports channels; the optional TV guide (Sky) and Sky channel logos | None of these used |
+| **Just added** | `https://apis.justwatch.com` | What's new on each UK streaming service, for Viewarr's Just added rows | No Just added rows |
+
+These are free public sites, not run by this plugin's author, and none of them is sent anything about you or your server beyond the request itself. You choose whether to use them. An install from before these settings existed has the examples filled in once on update, so nothing it used stops working.
+
 ## Best stream first
 
 Dispatcharr plays a channel's streams in their saved order and only moves on when one fails, so the first stream is the one everybody gets. With **Best stream first** on (it is by default), the plugin ranks the streams of every channel that has more than one, every 5 minutes, and puts the best first:

@@ -197,7 +197,7 @@ class SkyUK(ListingsSource):
     epg_name = "Viewarr: Sky guide"
     channel_prefix = "sky."
 
-    HAWK = "https://awk.epgsky.com/hawk/linear"
+    HAWK = ""  # the Sky listings address the admin added + /hawk/linear (server.apply_sources); empty: not used
     HEADERS = {"X-SkyOTT-Territory": "GB"}
     LOGO = "https://d2n0069hmnqmmx.cloudfront.net/epgdata/1.0/newchanlogos/500/500/skychb%s.png"
     PICTURE = "https://images.metadata.sky.com/pd-image/%s/16-9/640"
@@ -893,6 +893,10 @@ def run(data_dir, cfg, stop=None, log=None, touch_dispatcharr=True):
     http = Http(stop, log)
     region = source.region_label(cfg["settings"])
 
+    if getattr(source, "HAWK", None) == "":
+        state.update(error="no Sky listings address added (plugin settings: Sky listings)", sig_run=cfg["sig"], on=True)
+        _save_json(spath, state)
+        return state
     services = source.services(cfg["settings"], http)
     if services:
         state["services"] = services
