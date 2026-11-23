@@ -116,9 +116,9 @@ To pause and rewind live TV, the plugin keeps the last part of each channel bein
 
 ### Do I need to do anything?
 
-**No.** It works straight away: with nothing set up, the buffer goes in Dispatcharr's own data folder.
+**No.** It works straight away: with **Live timeshift: folder** left empty, the buffer goes in Dispatcharr's own folder.
 
-You only need to do something if you want it somewhere better, for example on a faster disk or one with more room. There's one simple step for that, below.
+You only need to set it if you want the buffer somewhere better, such as a fast cache disk. See [Choosing the folder](#choosing-the-folder) below.
 
 ### How much space it needs
 
@@ -130,16 +130,16 @@ You only need to do something if you want it somewhere better, for example on a 
 ### What makes a good place
 
 - **Fast**: an SSD or NVMe is best. The buffer is written non-stop while someone watches.
-- **Never moved**: not a folder that something tidies away to another disk (on Unraid: not a share the mover moves).
+- **Never moved**: on Unraid, a **cache-only share** (Primary storage: your cache pool, Secondary storage: **None**), so the mover never touches it. Not a share the mover moves to the array: the mover can shift buffer pieces away while someone's watching, and rewinding then fails.
 
-### Giving the buffer its own folder (optional)
+### Choosing the folder
 
-Add one folder to your Dispatcharr container, with the container path **`/data/timeshift`**. That's all: the plugin notices it by itself and uses it from then on.
+Two steps: let Dispatcharr's container see the folder, then type its path in the plugin.
 
-Pick a folder on a fast disk, then follow the steps for your system:
+**1. Add the folder to Dispatcharr's container**
 
-**Unraid**
-1. **Shares → Add Share.** Give it a name (for example `timeshift`). Set **Primary storage** to your cache pool and **Secondary storage** to **None**, so the mover never touches it. Add Share.
+*Unraid*
+1. **Shares → Add Share.** Name it (for example `timeshift`). **Primary storage**: your cache pool. **Secondary storage**: **None**. Add Share.
 2. **Docker → Dispatcharr → Edit → Add another Path, Port, Variable…**
    - Config Type: **Path**
    - Container Path: **`/data/timeshift`**
@@ -147,32 +147,25 @@ Pick a folder on a fast disk, then follow the steps for your system:
    - Access Mode: **Read/Write**
 3. **Save**, then **Apply**. Dispatcharr restarts once.
 
-**Docker Compose**
-1. Make a folder on a fast disk, for example `/srv/timeshift`.
-2. In your compose file, under the Dispatcharr service's `volumes:`, add one line:
+*Docker Compose*: under the Dispatcharr service's `volumes:` add one line, then run `docker compose up -d`:
 
-   ```yaml
-   services:
-     dispatcharr:
-       volumes:
-         - ./data:/data                    # (already there)
-         - /srv/timeshift:/data/timeshift  # add this
-   ```
-3. Run `docker compose up -d`. Dispatcharr restarts once.
+```yaml
+services:
+  dispatcharr:
+    volumes:
+      - ./data:/data                    # (already there)
+      - /srv/timeshift:/data/timeshift  # add this: a folder on a fast disk
+```
 
-**Synology, TrueNAS, Portainer, CasaOS and others**
+*Synology, TrueNAS, Portainer, CasaOS and others*: in Dispatcharr's container settings, find **Volumes** (also called Storage, Mounts or Folders) and add one: a folder on a fast disk, mounted at **`/data/timeshift`**, read/write. Save and let the container restart.
 
-In Dispatcharr's container settings, find **Volumes** (also called Storage, Mounts or Folders) and add one:
-- folder on your server: a folder on a fast disk
-- path in the container (mount path): **`/data/timeshift`**
-- read/write
+**2. Type the path in the plugin**
 
-Save, and let the container restart.
+Dispatcharr → **Plugins → Viewarr → Live timeshift: folder**: type the **container path**, for example `/data/timeshift` (not the path on your server, such as `/mnt/cache/…`). Save. Viewarr admins can also set it in Viewarr → Settings → Plugins → Viewarr.
 
-**Check it worked:** press **Sports service status** in the plugin's page in Dispatcharr. After **live timeshift** it should say **kept in the /data/timeshift folder**, with the free space. (It can take up to 5 minutes after the restart.)
+The plugin keeps its files in a `viewarr-timeshift` folder inside it and touches nothing else there. It moves over once nobody's watching a buffered channel, so nobody's picture jumps.
 
-There's no setting for this: the plugin uses `/data/timeshift` when it's there and has 10 GB free, and Dispatcharr's own folder otherwise. It only switches when nobody's watching a buffered channel, so nobody's picture jumps.
-
+**Check it worked:** press **Sports service status**. After **live timeshift** it says **kept in /data/timeshift**, with the free space. If the folder can't be used (it doesn't exist in the container, can't be written to, or has under 10 GB free), the buffer stays in Dispatcharr's own folder and the status says why.
 
 ## TV guide (Sky)
 
@@ -249,6 +242,7 @@ That's it. Nobody needs to set anything up in Viewarr: each TV finds the plugin 
 | Live timeshift: channels | All channels (default), or only channels without catch-up (those keep using the provider's catch-up). |
 | **Live timeshift: buffer length** | How far back a TV can rewind: 30 minutes to 4 hours, default 2 hours. An HD channel takes about 3 GB an hour on the server while it's watched. |
 | **Live timeshift: channels at once** | Default 3. Beyond it a TV has catch-up (if the channel has it) or live only. |
+| **Live timeshift: folder** | Empty (default): Dispatcharr's own folder. Or a path inside Dispatcharr's container, preferably a cache-only share the mover never touches. See [Choosing the folder](#choosing-the-folder). |
 | **Backups** | On by default. Off: Viewarr hides Backups and the plugin refuses them; saved ones are kept. |
 | **TV guide (Sky)** and its options | Off by default. See [TV guide (Sky)](#tv-guide-sky). |
 | **Channel logos from Sky**, its sources and country | Off by default. See [Channel logos](#channel-logos). |

@@ -228,10 +228,11 @@
       "help_text": "At most this many channels are buffered at the same time; a TV on another channel then has catch-up (if the channel has it) or live TV only, as without the plugin."
     },
     {
-      "id": "timeshift_where",
-      "label": "Live timeshift: where it's kept",
-      "type": "info",
-      "help_text": "Nothing to set. The buffer goes in Dispatcharr's own folder. To use a faster disk, add a folder to Dispatcharr's container as /data/timeshift and the plugin uses it by itself (steps in the README). Sports service status shows where it is and how much room is left."
+      "id": "timeshift_folder",
+      "label": "Live timeshift: folder",
+      "type": "string",
+      "default": "",
+      "help_text": "Where the timeshift buffer is kept, as a path inside Dispatcharr's container (for example /data/timeshift). Empty: Dispatcharr's own folder.\n\nBest on a fast disk that nothing moves: on Unraid, a share set to cache only (Secondary storage: None), so the mover never touches it. Not a share the mover moves to the array.\n\nAdd the folder to Dispatcharr's container first (Unraid: Docker \u2192 Dispatcharr \u2192 Edit \u2192 Add another Path; Compose: a line under volumes), then type its container path here. The plugin keeps its files in a viewarr-timeshift folder inside it and touches nothing else. Sports service status shows where it's kept and the free space."
     },
     {
       "id": "backups",

@@ -110,12 +110,12 @@ class Plugin:
         n = t.get("buffers", 0)
         free = t.get("free_gb") or {}
         where = ""
-        if t.get("storage"):
-            if t["storage"] == "timeshift":
-                where = f"; kept in the /data/timeshift folder ({free.get('timeshift')} GB free)"
+        if "in_folder" in t:
+            if t["in_folder"]:
+                where = f"; kept in {t.get('folder')} ({free.get('folder')} GB free)"
             else:
                 where = (f"; kept in Dispatcharr's own folder ({free.get('data')} GB free"
-                         + (f"; {t['why']}" if t.get("why") else "") + ")")
+                         + (f"; {t['folder']} not used: {t['why']}" if t.get("folder") and t.get("why") else "") + ")")
         return f"{n} channel(s) buffered" + (f", window {t['window_min']} min" if t.get("window_min") else "") + where
 
     @staticmethod
