@@ -131,7 +131,6 @@ You only need to do something if you want it somewhere better, for example on a 
 
 - **Fast**: an SSD or NVMe is best. The buffer is written non-stop while someone watches.
 - **Never moved**: not a folder that something tidies away to another disk (on Unraid: not a share the mover moves).
-- **Not your recordings folder**: recordings are kept for good; the buffer is thrown away. Keeping them apart keeps both tidy.
 
 ### Giving the buffer its own folder (optional)
 
@@ -170,24 +169,10 @@ In Dispatcharr's container settings, find **Volumes** (also called Storage, Moun
 
 Save, and let the container restart.
 
-**Check it worked:** press **Sports service status** (or **TV guide status**) in the plugin's page in Dispatcharr. After **live timeshift** it should say **buffer folder: its own folder (/data/timeshift)**, with the free space after it. (It can take up to 5 minutes after the restart.)
+**Check it worked:** press **Sports service status** in the plugin's page in Dispatcharr. After **live timeshift** it should say **kept in the /data/timeshift folder**, with the free space. (It can take up to 5 minutes after the restart.)
 
-### The setting, if you want to choose yourself
+There's no setting for this: the plugin uses `/data/timeshift` when it's there and has 10 GB free, and Dispatcharr's own folder otherwise. It only switches when nobody's watching a buffered channel, so nobody's picture jumps.
 
-**Live timeshift: buffer folder** in the plugin's settings. You never type a path, so it can't point somewhere that doesn't exist.
-
-| Choice | Where the buffer goes |
-|---|---|
-| **Automatic** (default) | The `/data/timeshift` folder if you've added one. If not, Dispatcharr's data folder. The recordings folder only if neither has 10 GB free. |
-| **Its own folder (`/data/timeshift`)** | The folder you added above (inside it, in `viewarr`). If you haven't added one, the data folder is used instead. |
-| **Dispatcharr's data folder** | The folder you gave Dispatcharr as `/data` when you set it up, in `logos/viewarr-ts`. |
-| **TV recordings folder** | Where Dispatcharr saves recordings (`/data/recordings`), in a hidden `.viewarr-timeshift` folder so Plex, Jellyfin and Emby don't see it. Only worth it if that's a fast disk that nothing moves. |
-
-A change takes effect once nobody's watching a buffered channel, so nobody's picture jumps.
-
-### Recordings
-
-Recordings are Dispatcharr's own job; the plugin doesn't change where they go. Dispatcharr saves them in `/data/recordings` inside its container. To keep them on another disk or share, map it to that path the same way as above (container path **`/data/recordings`**), for example on Unraid a share that the mover moves to the array, since recordings are kept for good.
 
 ## TV guide (Sky)
 
@@ -262,9 +247,8 @@ That's it. Nobody needs to set anything up in Viewarr: each TV finds the plugin 
 | **Provider to measure first** | M3U account name; empty means the one with the most left. |
 | **Live timeshift (pause and rewind live TV)** | On by default. Keeps a buffer of each channel being watched; see above. Off: Viewarr hides it. |
 | Live timeshift: channels | All channels (default), or only channels without catch-up (those keep using the provider's catch-up). |
-| **Live timeshift: buffer length** | How far back a TV can rewind: 30 minutes to 4 hours, default 2 hours. An HD channel takes about 3 GB an hour on `/data` while it's watched. |
+| **Live timeshift: buffer length** | How far back a TV can rewind: 30 minutes to 4 hours, default 2 hours. An HD channel takes about 3 GB an hour on the server while it's watched. |
 | **Live timeshift: channels at once** | Default 3. Beyond it a TV has catch-up (if the channel has it) or live only. |
-| Live timeshift: buffer folder | Automatic (default: suggests the best of the two), Dispatcharr's data folder, or the TV recordings folder (`/data/recordings/.viewarr-timeshift`, hidden from Plex/Jellyfin). Changes once nothing is being buffered. |
 | **Backups** | On by default. Off: Viewarr hides Backups and the plugin refuses them; saved ones are kept. |
 | **TV guide (Sky)** and its options | Off by default. See [TV guide (Sky)](#tv-guide-sky). |
 | **Channel logos from Sky**, its sources and country | Off by default. See [Channel logos](#channel-logos). |

@@ -36,13 +36,13 @@ VERSION = 1
 
 ROOT = "/data/logos/viewarr-ts"
 URL_BASE = "/logos/viewarr-ts"
-# Where the buffer files really live (setting "timeshift_storage"): Dispatcharr's own data folder (ROOT itself), a
-# folder of its own mapped to /data/timeshift (for example a fast cache-only share), or a hidden folder in the
-# recordings folder; the last two are linked in at ROOT so Dispatcharr's web server still serves them. The hidden
-# name keeps Plex / Jellyfin library scans out of the recordings folder.
+# Where the buffer files really live, picked by itself (nothing to set): a folder the admin mapped to /data/timeshift
+# (for example a fast cache-only share), linked in at ROOT so Dispatcharr's web server still serves it; otherwise
+# Dispatcharr's own data folder (ROOT itself). Recordings are Dispatcharr's own business: the buffer never goes there.
 TIMESHIFT_MOUNT = "/data/timeshift"
-STORAGE = {"data": None, "timeshift": TIMESHIFT_MOUNT + "/viewarr",
-           "recordings": "/data/recordings/.viewarr-timeshift"}
+STORAGE = {"data": None, "timeshift": TIMESHIFT_MOUNT + "/viewarr"}
+# Before 0.6.8 the buffer could be kept in the recordings folder; whatever was left there is cleared once.
+OLD_RECORDINGS_DIR = "/data/recordings/.viewarr-timeshift"
 # Dispatcharr's own web server inside the container (uWSGI's HTTP port, which nginx hands /proxy/ to); overridable.
 PROXY_BASE = os.environ.get("VIEWARR_TS_PROXY", "http://127.0.0.1:5656")
 FFMPEG = "/usr/local/bin/ffmpeg" if os.path.exists("/usr/local/bin/ffmpeg") else "ffmpeg"
@@ -95,10 +95,7 @@ def settings_of(settings):
         most = int(str(s.get("timeshift_max") or DEFAULT_MAX).strip())
     except ValueError:
         most = DEFAULT_MAX
-    storage = str(s.get("timeshift_storage") or "auto").strip()
-    if storage not in STORAGE and storage != "auto":
-        storage = "auto"
-    return on, max(10, min(window, 480)) * 60, max(1, min(most, 10)), storage
+    return on, max(10, min(window, 480)) * 60, max(1, min(most, 10))
 
 
 def _place_info(path):
@@ -119,10 +116,9 @@ _suggested = {"at": 0.0, "value": None}
 
 
 def suggest_storage(fresh=False):
-    """The suggested place, and why: the TV recordings folder when it's a separate disk or share mapped into the
-    container (its own device) with more free space than Dispatcharr's data folder; otherwise the data folder.
-    Returns (choice, {"data": free GB or None, "recordings": free GB or None}, reason). Kept for SUGGEST_TTL_S (the
-    status asks every round) unless [fresh]."""
+    """Where the buffer goes, and why: the /data/timeshift folder when one is mapped and has room, otherwise
+    Dispatcharr's data folder. Returns (place, {"timeshift": free GB or None, "data": free GB}, reason). Kept for
+    SUGGEST_TTL_S (asked every few seconds) unless [fresh]."""
     if not fresh and _suggested["value"] is not None and time.time() - _suggested["at"] < SUGGEST_TTL_S:
         return _suggested["value"]
     value = _suggest_storage()
@@ -140,35 +136,32 @@ def _timeshift_mapped():
 
 def _suggest_storage():
     data = _place_info(os.path.dirname(ROOT))  # /data/logos
-    rec_dir = os.path.dirname(STORAGE["recordings"])  # /data/recordings
-    rec = _place_info(rec_dir) if os.path.isdir(rec_dir) else None
     ts = _place_info(TIMESHIFT_MOUNT) if _timeshift_mapped() else None
     gb = lambda i: round(i[1] / 1e9) if i else None
-    free = {"timeshift": gb(ts), "data": gb(data), "recordings": gb(rec)}
-    # A folder mapped to /data/timeshift is there for the buffer, so it comes first. Then Dispatcharr's data folder:
-    # it's normally fast local storage (appdata on an SSD/NVMe cache), and the buffer is rewritten all the time.
-    # Recordings folders are often on slower disks or shares that a mover shifts to an array, so they're only used
-    # when neither has room.
-    separate = bool(rec and data) and (rec[2] != data[2] or abs(rec[1] - data[1]) > 0.1 * max(rec[1], data[1]))
+    free = {"timeshift": gb(ts), "data": gb(data)}
     if ts and ts[1] >= MIN_FREE_BYTES:
-        return "timeshift", free, "a folder is mapped to /data/timeshift for the buffer"
-    if data and data[1] >= MIN_FREE_BYTES:
-        return "data", free, "Dispatcharr's data folder (fast local storage, has room)"
-    if rec and rec[1] >= MIN_FREE_BYTES:
-        return "recordings", free, "the data folder has under 10 GB free and the TV recordings folder has room" + ("" if separate else " (same disk)")
-    return "data", free, "no place has 10 GB free"
+        return "timeshift", free, "a folder is added as /data/timeshift"
+    if ts:
+        return "data", free, "the /data/timeshift folder has under 10 GB free"
+    return "data", free, "no /data/timeshift folder added"
+
+
+def _clear_old_recordings_dir(log=None):
+    """Removes the buffer folder older versions could keep in the recordings folder (only this plugin's own hidden
+    folder; nothing else in recordings is touched)."""
+    try:
+        if os.path.isdir(OLD_RECORDINGS_DIR) and not os.path.islink(OLD_RECORDINGS_DIR):
+            shutil.rmtree(OLD_RECORDINGS_DIR, ignore_errors=True)
+            if log:
+                log("timeshift: removed the old buffer folder %s" % OLD_RECORDINGS_DIR)
+    except OSError:
+        pass
 
 
 def use_storage(storage, log=None):
-    """Points ROOT at the chosen place: a plain folder, or a link to the recordings folder's hidden folder. Only
-    called with no buffer running (anything left in the old place is cleared)."""
-    if storage == "auto":
-        storage, free, why = suggest_storage(fresh=True)
-        if log:
-            log("timeshift: automatic buffer folder: %s (%s; free GB %s)" % (storage, why, free))
+    """Points ROOT at [storage]: a plain folder in Dispatcharr's data folder, or a link to the /data/timeshift
+    folder. Only called with no buffer running."""
     if storage == "timeshift" and not _timeshift_mapped():
-        if log:
-            log("timeshift: nothing is mapped to %s, using Dispatcharr's data folder" % TIMESHIFT_MOUNT)
         storage = "data"
     real = STORAGE.get(storage)
     try:
@@ -358,13 +351,20 @@ class Manager:
         self.settings_at = time.time()
         try:
             raw = self.settings_fn() or {}
-            self.on, self.window_s, self.most, storage = settings_of(raw)
+            self.on, self.window_s, self.most = settings_of(raw)
             # "all" channels, or only those without the provider's catch-up (the TVs skip asking for those).
             self.channels = "no_catchup" if str(raw.get("timeshift_channels") or "all").strip() == "no_catchup" else "all"
-            # (A new place only once nothing is buffered, so a buffer being watched never moves.)
+            # Where the buffer goes is picked by itself; a new place only once nothing is buffered, so a buffer
+            # being watched never moves.
+            storage, _free, why = suggest_storage()
             if storage != getattr(self, "storage", None) and not self.buffers:
-                if use_storage(storage, getattr(self, "log", None)):
+                log = getattr(self, "log", None)
+                if getattr(self, "storage", None) is None:
+                    _clear_old_recordings_dir(log)
+                if use_storage(storage, log):
                     self.storage = storage
+                    if log:
+                        log("timeshift: buffer folder: %s (%s)" % (storage, why))
         except Exception:
             pass
 
@@ -561,7 +561,7 @@ def status():
     m = _manager
     if m is None:
         return {"on": None, "buffers": 0}
-    choice, free, why = suggest_storage()
+    _choice, free, why = suggest_storage()
     return {"on": m.on, "window_min": m.window_s // 60, "buffers": len(m.buffers),
             "channels": sorted(m.buffers), "refused": dict(m.refused),
-            "storage": getattr(m, "storage", None), "suggested_storage": choice, "suggested_why": why, "free_gb": free}
+            "storage": getattr(m, "storage", None), "why": why, "free_gb": free}

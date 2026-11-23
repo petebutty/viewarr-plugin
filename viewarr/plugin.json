@@ -192,7 +192,7 @@
           "label": "4 hours"
         }
       ],
-      "help_text": "How far back a TV can rewind on a channel (from when the first TV started watching it). An HD channel takes about 3 GB an hour on the server's /data disk while it's being watched."
+      "help_text": "How far back a TV can rewind on a channel (from when the first TV started watching it). An HD channel takes about 3 GB an hour on the server while it's being watched."
     },
     {
       "id": "timeshift_max",
@@ -228,29 +228,10 @@
       "help_text": "At most this many channels are buffered at the same time; a TV on another channel then has catch-up (if the channel has it) or live TV only, as without the plugin."
     },
     {
-      "id": "timeshift_storage",
-      "label": "Live timeshift: buffer folder",
-      "type": "select",
-      "default": "auto",
-      "options": [
-        {
-          "value": "auto",
-          "label": "Automatic (suggested)"
-        },
-        {
-          "value": "data",
-          "label": "Dispatcharr's data folder"
-        },
-        {
-          "value": "timeshift",
-          "label": "Its own folder mapped to /data/timeshift"
-        },
-        {
-          "value": "recordings",
-          "label": "TV recordings folder (hidden .viewarr-timeshift)"
-        }
-      ],
-      "help_text": "Automatic picks for you: a folder mapped to /data/timeshift if you've added one (for example a fast cache-only share), otherwise Dispatcharr's data folder, and the TV recordings folder only when neither has 10 GB free. The plugin's status shows which it chose and the free space of each. Changes once no channel is being buffered."
+      "id": "timeshift_where",
+      "label": "Live timeshift: where it's kept",
+      "type": "info",
+      "help_text": "Nothing to set. The buffer goes in Dispatcharr's own folder. To use a faster disk, add a folder to Dispatcharr's container as /data/timeshift and the plugin uses it by itself (steps in the README). Sports service status shows where it is and how much room is left."
     },
     {
       "id": "backups",
