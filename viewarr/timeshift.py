@@ -133,15 +133,14 @@ def _suggest_storage():
     rec = _place_info(rec_dir) if os.path.isdir(rec_dir) else None
     gb = lambda i: round(i[1] / 1e9) if i else None
     free = {"data": gb(data), "recordings": gb(rec)}
-    # (Separate storage: another device, or, on pooled shares such as Unraid's /mnt/user where every share reports the
-    # same device, clearly different free space.)
+    # Dispatcharr's data folder first: it's normally fast local storage (appdata on an SSD/NVMe cache), and the buffer
+    # is rewritten all the time. Recordings folders are often on slower disks or shares that a mover shifts to an
+    # array, so they're only used when the data folder hasn't room.
     separate = bool(rec and data) and (rec[2] != data[2] or abs(rec[1] - data[1]) > 0.1 * max(rec[1], data[1]))
-    if separate and rec[1] >= max(data[1], MIN_FREE_BYTES):
-        return "recordings", free, "the TV recordings folder is its own disk or share with the most free space"
     if data and data[1] >= MIN_FREE_BYTES:
-        return "data", free, "Dispatcharr's data folder" + (" (the recordings folder is on the same disk)" if rec and not separate else "")
+        return "data", free, "Dispatcharr's data folder (fast local storage, has room)"
     if rec and rec[1] >= MIN_FREE_BYTES:
-        return "recordings", free, "the TV recordings folder has room and the data folder doesn't"
+        return "recordings", free, "the data folder has under 10 GB free and the TV recordings folder has room" + ("" if separate else " (same disk)")
     return "data", free, "neither place has 10 GB free"
 
 

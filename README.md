@@ -118,7 +118,7 @@ You don't type a path: **Live timeshift: buffer folder** offers the two places y
 
 | Choice | Where the files really are |
 |---|---|
-| **Automatic** (default) | Picks for you: the TV recordings folder when `/data/recordings` is mapped to its own disk or share with more free space, otherwise Dispatcharr's data folder. **TV guide status / Sports service status** shows which it chose and the free space of each. |
+| **Automatic** (default) | Picks for you: Dispatcharr's data folder (usually fast local storage, such as appdata on an SSD/NVMe cache) whenever it has 10 GB free; the TV recordings folder only when it hasn't. Recordings shares are often on slower disks or moved to an array by a mover, which suits recordings but not a buffer that's rewritten all the time. **TV guide status / Sports service status** shows which it chose and the free space of each. |
 | **Dispatcharr's data folder** | Inside whatever you mapped to `/data` in your Dispatcharr container (for example `/mnt/user/appdata/dispatcharr` on Unraid, or the `./data` folder next to your compose file), in `logos/viewarr-ts`. |
 | **TV recordings folder** | Dispatcharr's `/data/recordings`, where it saves recordings, in a hidden `.viewarr-timeshift` folder (so Plex, Jellyfin and Emby don't pick it up). By default that's a folder inside `/data`; if you've mapped a separate share or disk to `/data/recordings`, the buffer goes there. |
 
