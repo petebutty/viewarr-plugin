@@ -85,15 +85,54 @@ def settings_of(settings):
         most = int(str(s.get("timeshift_max") or DEFAULT_MAX).strip())
     except ValueError:
         most = DEFAULT_MAX
-    storage = str(s.get("timeshift_storage") or "data").strip()
-    if storage not in STORAGE:
-        storage = "data"
+    storage = str(s.get("timeshift_storage") or "auto").strip()
+    if storage not in STORAGE and storage != "auto":
+        storage = "auto"
     return on, max(10, min(window, 480)) * 60, max(1, min(most, 10)), storage
+
+
+def _place_info(path):
+    """(writable, free bytes, device id) for a place, or None when it can't be used."""
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe = os.path.join(path, ".viewarr-write-test")
+        with open(probe, "w") as f:
+            f.write("ok")
+        os.remove(probe)
+        st = os.statvfs(path)
+        return (True, st.f_bavail * st.f_frsize, os.stat(path).st_dev)
+    except OSError:
+        return None
+
+
+def suggest_storage():
+    """The suggested place, and why: the TV recordings folder when it's a separate disk or share mapped into the
+    container (its own device) with more free space than Dispatcharr's data folder; otherwise the data folder.
+    Returns (choice, {"data": free GB or None, "recordings": free GB or None}, reason)."""
+    data = _place_info(os.path.dirname(ROOT))  # /data/logos
+    rec_dir = os.path.dirname(STORAGE["recordings"])  # /data/recordings
+    rec = _place_info(rec_dir) if os.path.isdir(rec_dir) else None
+    gb = lambda i: round(i[1] / 1e9) if i else None
+    free = {"data": gb(data), "recordings": gb(rec)}
+    # (Separate storage: another device, or, on pooled shares such as Unraid's /mnt/user where every share reports the
+    # same device, clearly different free space.)
+    separate = bool(rec and data) and (rec[2] != data[2] or abs(rec[1] - data[1]) > 0.1 * max(rec[1], data[1]))
+    if separate and rec[1] >= max(data[1], MIN_FREE_BYTES):
+        return "recordings", free, "the TV recordings folder is its own disk or share with the most free space"
+    if data and data[1] >= MIN_FREE_BYTES:
+        return "data", free, "Dispatcharr's data folder" + (" (the recordings folder is on the same disk)" if rec and not separate else "")
+    if rec and rec[1] >= MIN_FREE_BYTES:
+        return "recordings", free, "the TV recordings folder has room and the data folder doesn't"
+    return "data", free, "neither place has 10 GB free"
 
 
 def use_storage(storage, log=None):
     """Points ROOT at the chosen place: a plain folder, or a link to the recordings folder's hidden folder. Only
     called with no buffer running (anything left in the old place is cleared)."""
+    if storage == "auto":
+        storage, free, why = suggest_storage()
+        if log:
+            log("timeshift: automatic buffer folder: %s (%s; free GB %s)" % (storage, why, free))
     real = STORAGE.get(storage)
     try:
         if real is None:
@@ -450,5 +489,7 @@ def status():
     m = _manager
     if m is None:
         return {"on": None, "buffers": 0}
+    choice, free, why = suggest_storage()
     return {"on": m.on, "window_min": m.window_s // 60, "buffers": len(m.buffers),
-            "channels": sorted(m.buffers), "refused": dict(m.refused)}
+            "channels": sorted(m.buffers), "refused": dict(m.refused),
+            "storage": getattr(m, "storage", None), "suggested_storage": choice, "suggested_why": why, "free_gb": free}

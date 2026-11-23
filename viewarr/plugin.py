@@ -1,5 +1,5 @@
 """Viewarr house settings for Dispatcharr, and server-side sports (server.py, sports.py), Best stream first
-(streamorder.py) and reports from the TVs (reports.py).
+(streamorder.py), reports from the TVs (reports.py), the TV guide (guide.py) and channel logos (logos.py).
 
 Backups of an admin's whole Viewarr setup are kept in Dispatcharr's plugin data folder (admins only).
 
@@ -104,7 +104,9 @@ class Plugin:
                 f"reports: {(st.get('reports') or {}).get('handled', 0)} handled, "
                 f"{(st.get('reports') or {}).get('applied', 0)} changes; "
                 f"measured: {self._measured_text(st.get('measured') or {})}; "
-                f"live timeshift: {self._timeshift_text(st.get('timeshift') or {})}"
+                f"live timeshift: {self._timeshift_text(st.get('timeshift') or {})}; "
+                f"TV guide: {self._guide_text(st.get('guide') or {})}; "
+                f"channel logos: {self._logos_text(st.get('logos') or {})}"
                 + (f"; switched off: {', '.join(st['off'])}" if st.get("off") else "") + "."}
 
     @staticmethod
@@ -112,7 +114,88 @@ class Plugin:
         if t.get("on") is False:
             return "off"
         n = t.get("buffers", 0)
-        return f"{n} channel(s) buffered" + (f", window {t['window_min']} min" if t.get("window_min") else "")
+        free = t.get("free_gb") or {}
+        where = ""
+        if t.get("suggested_storage"):
+            names = {"data": "Dispatcharr's data folder", "recordings": "TV recordings folder"}
+            where = (f"; buffer folder {names.get(t.get('storage'), t.get('storage') or '?')}, suggested "
+                     f"{names.get(t['suggested_storage'])} ({t.get('suggested_why')}; free: data "
+                     f"{free.get('data')} GB, recordings {free.get('recordings')} GB)")
+        return f"{n} channel(s) buffered" + (f", window {t['window_min']} min" if t.get("window_min") else "") + where
+
+    @staticmethod
+    def _guide_text(g):
+        if not g.get("on"):
+            return "off"
+        c = g.get("counts") or {}
+        when = time.strftime("%H:%M", time.localtime(g["at"])) if g.get("at") else "not fetched yet"
+        return (f"{g.get('region') or ''} {when}, {c.get('matched', 0)} channels matched, "
+                f"{c.get('programmes', 0)} programmes, {g.get('applied', 0)} channel(s) pointed at it")
+
+    @staticmethod
+    def _logos_text(g):
+        if not g.get("mode") or g.get("mode") == "off":
+            return "off" + (f" ({g['changed']} still to put back)" if g.get("changed") else "")
+        return (f"{g.get('mode')}, {g.get('from_sky', 0)} from Sky, {g.get('from_tvlogos', 0)} from tv-logos, "
+                f"{g.get('changed', 0)} changed by the plugin")
+
+    # ---- Channel logos (logos.py): its own thread in the service; these are the buttons.
+
+    def _logos_status(self, context):
+        try:
+            return {"status": "success", "message": self._module("logos").status_text(_DATA, (context or {}).get("settings") or {})}
+        except Exception as exc:
+            return {"status": "error", "message": f"Couldn't read the logos' state: {exc}"}
+
+    def _logos_preview(self, params, context):
+        settings = dict((context or {}).get("settings") or {})
+        mode = str(params.get("mode") or "").strip().lower()
+        if mode in ("missing", "all"):
+            settings["guide_logos"] = mode
+        elif str(settings.get("guide_logos") or "off") == "off":
+            settings["guide_logos"] = "missing"      # (a preview of "missing" while it's off)
+        src = str(params.get("sources") or "").strip().lower()
+        if src in ("sky_tvlogos", "sky", "tvlogos"):
+            settings["logos_sources"] = src
+        try:
+            res = self._module("logos").run(_DATA, settings, dry=True)
+        except Exception as exc:
+            return {"status": "error", "message": f"Couldn't preview: {exc}"}
+        return {"status": "success", "result": {k: v for k, v in res.items() if k != "channels"},
+                "message": f"Mode \"{settings['guide_logos']}\": " + self._module("logos").preview_text(res)}
+
+    # ---- TV guide (guide.py): the service's thread fetches it twice a day; these are the buttons.
+
+    def _guide_status(self, context):
+        try:
+            return {"status": "success", "message": self._module("guide").status_text(_DATA, (context or {}).get("settings") or {})}
+        except Exception as exc:
+            return {"status": "error", "message": f"Couldn't read the guide's state: {exc}"}
+
+    def _guide_refresh(self, context):
+        settings = (context or {}).get("settings") or {}
+        log = (context or {}).get("logger")
+        try:
+            state, msg = self._module("guide").run_now(_DATA, settings, log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+        except Exception as exc:
+            return {"status": "error", "message": f"Couldn't fetch the guide: {exc}"}
+        return {"status": "success" if state is not None and not state.get("error") else "error", "message": msg}
+
+    def _guide_compare(self, params, context):
+        settings = (context or {}).get("settings") or {}
+        only = str(params.get("source") or "").strip() or None
+        try:
+            rows, overall = self._module("guide").compare(_DATA, settings, only_source=only)
+        except Exception as exc:
+            return {"status": "error", "message": f"Couldn't compare: {exc}"}
+        if not rows:
+            return {"status": "success", "message": "Nothing to compare yet: switch the TV guide on and let it fetch first."}
+        lines = [f"{r['channel']}: {r['agree']}% ({r['ours']} here, {r['theirs']} in {r['other']})" if r["agree"] is not None
+                 else f"{r['channel']}: nothing to compare ({r['other'] or 'no other guide'})" for r in rows]
+        head = (f"Next 24 hours, same title starting within 5 minutes: {overall}% agree overall over {len(rows)} channel(s). "
+                if overall is not None else "")
+        return {"status": "success", "result": {"overall": overall, "channels": rows},
+                "message": head + "Lowest first: " + "; ".join(lines[:60])}
 
     @staticmethod
     def _measured_text(m):
@@ -212,6 +295,16 @@ class Plugin:
             return self._reports_status()
         if action == "measure_now":
             return self._measure_now(context)
+        if action == "guide_status":
+            return self._guide_status(context)
+        if action == "guide_refresh":
+            return self._guide_refresh(context)
+        if action == "guide_compare":
+            return self._guide_compare(params, context)
+        if action == "logos_status":
+            return self._logos_status(context)
+        if action == "logos_preview":
+            return self._logos_preview(params, context)
         if action.startswith("backup_") and ((context or {}).get("settings") or {}).get("backups", True) is False:
             return {"status": "error", "message": "Backups are switched off in the Viewarr plugin's settings."}
         if action == "backup_save":

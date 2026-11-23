@@ -35,8 +35,10 @@ FUNCTIONS = {
     "live": "live_now", "games": "followed_games", "recordings": "sport_recordings", "alerts": "score_alerts",
     "event_channels": "event_channels", "just_added": "just_added", "watch_sync": "watch_sync",
     "stream_order": "stream_order", "reports": "reports_auto", "measure": "measure_on", "timeshift": "timeshift",
-    "backups": "backups",
+    "backups": "backups", "guide": "guide", "logos": "guide_logos",
 }
+# Functions that are off until switched on (the rest are on by default).
+DEFAULT_OFF = {"guide", "logos"}
 # The functions as the last round found them (the quick score checks between rounds read it).
 _FN = {}
 
@@ -45,7 +47,10 @@ def functions(settings):
     """{function: on} from the plugin's settings. Sport recordings and score alerts work from the followed games, so
     they're off whenever those are."""
     settings = settings or {}
-    on = {name: settings.get(key, True) is not False for name, key in FUNCTIONS.items()}
+    on = {name: settings.get(key, name not in DEFAULT_OFF) is not False for name, key in FUNCTIONS.items()}
+    on["guide"] = settings.get("guide") is True
+    # (Channel logos is a select: off / missing / all; an older app's plain switch counts as "missing".)
+    on["logos"] = settings.get("guide_logos") is True or str(settings.get("guide_logos") or "off") in ("missing", "all")
     if not on["games"]:
         on["recordings"] = on["alerts"] = False
     return on
@@ -451,7 +456,7 @@ def publish(log=None):
     status = {
         "recorded": recorded, "watch": watch, "just_added": just,
         "order": house.get("order"), "reports": house.get("reports"), "measured": house.get("measured"),
-        "timeshift": _timeshift_status(), "off": sorted(k for k, on in fn.items() if not on),
+        "timeshift": _timeshift_status(), "guide": _guide_status(), "logos": _logos_status(), "off": sorted(k for k, on in fn.items() if not on),
         "at": result["at"], "seconds": round(time.time() - t0, 1), "bytes": size, "users": users,
         "live": len(result.get("live", [])), "games": len(result.get("games", {})),
     }
@@ -463,6 +468,20 @@ def publish(log=None):
 def _timeshift_status():
     try:
         return _module("timeshift").status()
+    except Exception:
+        return None
+
+
+def _guide_status():
+    try:
+        return _module("guide").status(_data_dir())
+    except Exception:
+        return None
+
+
+def _logos_status():
+    try:
+        return _module("logos").status(_data_dir())
     except Exception:
         return None
 
@@ -544,6 +563,22 @@ def service(stop_event, log=None, status_path=None):
     except Exception as exc:
         if log:
             log.warning("Viewarr: timeshift thread didn't start: %s", exc)
+    # TV guide (guide.py): listings from Sky twice a day, written as an XMLTV guide source. Its own thread too (a
+    # fetch takes a minute or so); it does nothing while the "guide" setting is off.
+    try:
+        _module("guide").start(stop_event, _data_dir(), _own_settings,
+                               log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+    except Exception as exc:
+        if log:
+            log.warning("Viewarr: guide thread didn't start: %s", exc)
+    # Channel logos (logos.py): from Sky (the guide's matches) and tv-logos, once a day and after changes. Its own
+    # thread, separate from the guide, so it works with the guide off; it does nothing while "guide_logos" is off.
+    try:
+        _module("logos").start(stop_event, _data_dir(), _own_settings,
+                               log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+    except Exception as exc:
+        if log:
+            log.warning("Viewarr: logos thread didn't start: %s", exc)
     while not stop_event.is_set():
         if time.time() - last_full >= INTERVAL_S:
             last_full = time.time()
