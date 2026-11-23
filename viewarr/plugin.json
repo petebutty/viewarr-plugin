@@ -19,35 +19,75 @@
       "id": "sources_about",
       "label": "Outside sources (optional)",
       "type": "info",
-      "help_text": "The plugin contacts no outside site unless you add its address below, like playlist and guide links in Dispatcharr itself. Leave one empty and the features that use it work from your Dispatcharr guide only (or not at all). Each shows an example you can copy. These are free public sites, not run by this plugin's author; you choose whether to use them."
+      "help_text": "The plugin contacts no outside site unless you choose it below. Each is off until you pick its source; off, the features that use it work from your Dispatcharr guide only (or not at all). These are free public sites, not run by this plugin's author."
     },
     {
       "id": "src_sports",
       "label": "Sports data (fixtures, results, live scores)",
-      "type": "string",
-      "default": "",
-      "help_text": "Used for the Sports page, Live now and score checks. Leave empty: games from your guide only.\nExample: https://site.api.espn.com"
+      "type": "select",
+      "default": "off",
+      "help_text": "Fixtures, results and live scores for the Sports page, Live now and score checks. Off: games from your guide only.",
+      "options": [
+        {
+          "value": "off",
+          "label": "Off"
+        },
+        {
+          "value": "https://site.api.espn.com",
+          "label": "ESPN (site.api.espn.com)"
+        }
+      ]
     },
     {
       "id": "src_uk_tv",
       "label": "UK TV listings for games",
-      "type": "string",
-      "default": "",
-      "help_text": "Which UK channel shows each football game, weeks ahead. Leave empty: channels from your guide only.\nExample: https://www.live-footballontv.com"
+      "type": "select",
+      "default": "off",
+      "help_text": "Which UK channel shows each football game, weeks ahead. Off: channels from your guide only.",
+      "options": [
+        {
+          "value": "off",
+          "label": "Off"
+        },
+        {
+          "value": "https://www.live-footballontv.com",
+          "label": "live-footballontv.com"
+        }
+      ]
     },
     {
       "id": "src_sky",
       "label": "Sky listings",
-      "type": "string",
-      "default": "",
-      "help_text": "Sky's schedule for its sports channels, and the optional TV guide (Sky) and Sky channel logos below. Leave empty: none of these are used.\nExample: https://awk.epgsky.com"
+      "type": "select",
+      "default": "off",
+      "help_text": "Sky's schedule for its sports channels, and the optional TV guide (Sky) and Sky channel logos below. Off: none of these used.",
+      "options": [
+        {
+          "value": "off",
+          "label": "Off"
+        },
+        {
+          "value": "https://awk.epgsky.com",
+          "label": "Sky (awk.epgsky.com)"
+        }
+      ]
     },
     {
       "id": "src_justwatch",
       "label": "Just added",
-      "type": "string",
-      "default": "",
-      "help_text": "What's new on each UK streaming service, once a day, for Viewarr's Just added rows. Leave empty: no Just added rows.\nExample: https://apis.justwatch.com"
+      "type": "select",
+      "default": "off",
+      "help_text": "What's new on each UK streaming service, once a day, for Viewarr's Just added rows. Off: no Just added rows.",
+      "options": [
+        {
+          "value": "off",
+          "label": "Off"
+        },
+        {
+          "value": "https://apis.justwatch.com",
+          "label": "JustWatch (apis.justwatch.com)"
+        }
+      ]
     },
     {
       "id": "live_now",

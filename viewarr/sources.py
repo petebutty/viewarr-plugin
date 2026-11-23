@@ -1,5 +1,5 @@
 """Outside sources the admin adds: the plugin contacts no outside site unless its address has been added in the
-plugin's settings (like playlist and guide links in Dispatcharr itself). Each setting shows an example to paste.
+plugin's settings (like playlist and guide links in Dispatcharr itself). Each is a choice of Off or its one source.
 
 An empty setting: that source is never contacted, and the features that use it work from Dispatcharr's own data only
 (the guide), or do nothing. server.apply() points the helper modules at the addresses every round.
@@ -21,7 +21,7 @@ MARK = "sources_set"
 def base(settings, name):
     """The added address as "https://host" (whatever path was pasted after it), or "" when none or not usable."""
     raw = str((settings or {}).get(SOURCES[name][0]) or "").strip()
-    if not raw:
+    if not raw or raw.lower() == "off":
         return ""
     if "://" not in raw:
         raw = "https://" + raw
@@ -44,7 +44,7 @@ def upgrade(data_dir, log=None):
     existing = os.path.exists(os.path.join(data_dir, "server_status.json"))
     if existing:
         for setting, example in SOURCES.values():
-            if not str(settings.get(setting) or "").strip():
+            if str(settings.get(setting) or "off").strip().lower() in ("", "off"):
                 settings[setting] = example
     settings[MARK] = True
     conf.settings = settings

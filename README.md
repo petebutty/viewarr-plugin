@@ -56,16 +56,16 @@ If the plugin is missing or stops, the TVs go back to doing the work themselves.
 
 ## Outside sources (optional)
 
-The plugin contacts **no outside site** unless you add its address in the plugin's settings, the same way you add playlist and guide links in Dispatcharr itself. Each setting shows an example you can copy. Leave one empty and the features that use it work from your Dispatcharr guide only, or not at all.
+The plugin contacts **no outside site** unless you choose it in the plugin's settings. Each is a simple choice: **Off** (the default) or its one source. Off, the features that use it work from your Dispatcharr guide only, or not at all.
 
-| Setting | Example | Used for | Left empty |
+| Setting | Source to choose | Used for | Off |
 |---|---|---|---|
-| **Sports data** | `https://site.api.espn.com` | Sports page fixtures, results and live scores; Live now's headline games; score checks | Games from your guide only |
-| **UK TV listings for games** | `https://www.live-footballontv.com` | Which UK channel shows each football game, weeks ahead | Channels from your guide only |
-| **Sky listings** | `https://awk.epgsky.com` | Sky's schedule for its sports channels; the optional TV guide (Sky) and Sky channel logos | None of these used |
-| **Just added** | `https://apis.justwatch.com` | What's new on each UK streaming service, for Viewarr's Just added rows | No Just added rows |
+| **Sports data** | ESPN | Sports page fixtures, results and live scores; Live now's headline games; score checks | Games from your guide only |
+| **UK TV listings for games** | live-footballontv.com | Which UK channel shows each football game, weeks ahead | Channels from your guide only |
+| **Sky listings** | Sky | Sky's schedule for its sports channels; the optional TV guide (Sky) and Sky channel logos | None of these used |
+| **Just added** | JustWatch | What's new on each UK streaming service, for Viewarr's Just added rows | No Just added rows |
 
-These are free public sites, not run by this plugin's author, and none of them is sent anything about you or your server beyond the request itself. You choose whether to use them. An install from before these settings existed has the examples filled in once on update, so nothing it used stops working.
+These are free public sites, not run by this plugin's author, and none of them is sent anything about you or your server beyond the request itself. An install from before these settings existed has all four chosen once on update, so nothing it used stops working.
 
 ## Best stream first
 
