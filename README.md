@@ -112,46 +112,82 @@ You don't need the [UK Sport on TV](https://github.com/petebutty/uk-sport-on-tv)
 
 ## Live timeshift: where the buffer is kept
 
-Live timeshift needs disk space on your Dispatcharr server while someone watches: about **3 GB per hour of buffer for each channel being watched** (an HD channel; less for SD). With the defaults (2 hours, up to 3 channels at once) that's up to about **18 GB**, all deleted as soon as nobody's watching. The plugin won't start a buffer with less than 10 GB free.
+To pause and rewind live TV, the plugin keeps the last part of each channel being watched on your Dispatcharr server. That's the **buffer**. It's deleted as soon as nobody's watching.
 
-You don't type a path: **Live timeshift: buffer folder** offers the places your Dispatcharr already has, so it can't point anywhere that doesn't exist.
+### Do I need to do anything?
 
-| Choice | Where the files really are |
+**No.** It works straight away: with nothing set up, the buffer goes in Dispatcharr's own data folder.
+
+You only need to do something if you want it somewhere better, for example on a faster disk or one with more room. There's one simple step for that, below.
+
+### How much space it needs
+
+- About **3 GB per hour of buffer for each channel being watched** (HD; less for SD).
+- With the default settings (2 hours, up to 3 channels at once) that's up to about **18 GB**.
+- The plugin won't start a buffer with less than 10 GB free, and stops one if the disk gets below 5 GB.
+- Shorter buffer or fewer channels = less space: see **Live timeshift: buffer length** and **Live timeshift: channels at once** in the settings.
+
+### What makes a good place
+
+- **Fast**: an SSD or NVMe is best. The buffer is written non-stop while someone watches.
+- **Never moved**: not a folder that something tidies away to another disk (on Unraid: not a share the mover moves).
+- **Not your recordings folder**: recordings are kept for good; the buffer is thrown away. Keeping them apart keeps both tidy.
+
+### Giving the buffer its own folder (optional)
+
+Add one folder to your Dispatcharr container, with the container path **`/data/timeshift`**. That's all: the plugin notices it by itself and uses it from then on.
+
+Pick a folder on a fast disk, then follow the steps for your system:
+
+**Unraid**
+1. **Shares → Add Share.** Give it a name (for example `timeshift`). Set **Primary storage** to your cache pool and **Secondary storage** to **None**, so the mover never touches it. Add Share.
+2. **Docker → Dispatcharr → Edit → Add another Path, Port, Variable…**
+   - Config Type: **Path**
+   - Container Path: **`/data/timeshift`**
+   - Host Path: **`/mnt/cache/timeshift`** (your pool name and share name)
+   - Access Mode: **Read/Write**
+3. **Save**, then **Apply**. Dispatcharr restarts once.
+
+**Docker Compose**
+1. Make a folder on a fast disk, for example `/srv/timeshift`.
+2. In your compose file, under the Dispatcharr service's `volumes:`, add one line:
+
+   ```yaml
+   services:
+     dispatcharr:
+       volumes:
+         - ./data:/data                    # (already there)
+         - /srv/timeshift:/data/timeshift  # add this
+   ```
+3. Run `docker compose up -d`. Dispatcharr restarts once.
+
+**Synology, TrueNAS, Portainer, CasaOS and others**
+
+In Dispatcharr's container settings, find **Volumes** (also called Storage, Mounts or Folders) and add one:
+- folder on your server: a folder on a fast disk
+- path in the container (mount path): **`/data/timeshift`**
+- read/write
+
+Save, and let the container restart.
+
+**Check it worked:** press **Sports service status** (or **TV guide status**) in the plugin's page in Dispatcharr. After **live timeshift** it should say **buffer folder: its own folder (/data/timeshift)**, with the free space after it. (It can take up to 5 minutes after the restart.)
+
+### The setting, if you want to choose yourself
+
+**Live timeshift: buffer folder** in the plugin's settings. You never type a path, so it can't point somewhere that doesn't exist.
+
+| Choice | Where the buffer goes |
 |---|---|
-| **Automatic** (default) | Picks for you: a folder mapped to `/data/timeshift` if you've added one; otherwise Dispatcharr's data folder (usually fast local storage, such as appdata on an SSD/NVMe cache) whenever it has 10 GB free; the TV recordings folder only when neither has room. Recordings shares are often on slower disks or moved to an array by a mover, which suits recordings but not a buffer that's rewritten all the time. **TV guide status / Sports service status** shows which it chose and the free space of each. |
-| **Its own folder (`/data/timeshift`)** | Whatever you map to `/data/timeshift` in your Dispatcharr container, in a `viewarr` folder inside it. Best for a fast disk kept just for this, such as an Unraid share set to cache only (see below). Only offered when something is mapped there. |
-| **Dispatcharr's data folder** | Inside whatever you mapped to `/data` in your Dispatcharr container (for example `/mnt/user/appdata/dispatcharr` on Unraid, or the `./data` folder next to your compose file), in `logos/viewarr-ts`. |
-| **TV recordings folder** | Dispatcharr's `/data/recordings`, where it saves recordings, in a hidden `.viewarr-timeshift` folder (so Plex, Jellyfin and Emby don't pick it up). By default that's a folder inside `/data`; if you've mapped a separate share or disk to `/data/recordings`, the buffer goes there. |
+| **Automatic** (default) | The `/data/timeshift` folder if you've added one. If not, Dispatcharr's data folder. The recordings folder only if neither has 10 GB free. |
+| **Its own folder (`/data/timeshift`)** | The folder you added above (inside it, in `viewarr`). If you haven't added one, the data folder is used instead. |
+| **Dispatcharr's data folder** | The folder you gave Dispatcharr as `/data` when you set it up, in `logos/viewarr-ts`. |
+| **TV recordings folder** | Where Dispatcharr saves recordings (`/data/recordings`), in a hidden `.viewarr-timeshift` folder so Plex, Jellyfin and Emby don't see it. Only worth it if that's a fast disk that nothing moves. |
 
-The folder changes once no channel is being buffered.
+A change takes effect once nobody's watching a buffered channel, so nobody's picture jumps.
 
-### A fast folder just for the buffer
+### Recordings
 
-The buffer is rewritten constantly while a channel is watched, so it suits a fast disk (SSD/NVMe) that nothing else moves. Map one to `/data/timeshift` and **Automatic** uses it:
-
-- **Unraid:** make a share with **Primary storage: Cache** and **Secondary storage: None** (so the mover never touches it), then Docker → Dispatcharr → Edit → **Add another Path**: Container Path `/data/timeshift`, Host Path `/mnt/cache/<share>`, Access Mode Read/Write. Apply.
-- **Docker Compose:** add `- /path/to/fast/folder:/data/timeshift` under the Dispatcharr service's `volumes:` and run `docker compose up -d`.
-
-### Keeping recordings (and the buffer) on another disk or share
-
-Dispatcharr always records into `/data/recordings` inside its container. To put recordings on another disk or share, map it to that path, then choose **TV recordings folder** if you want the timeshift buffer there too.
-
-- **Unraid:** Docker → Dispatcharr → Edit → **Add another Path**: Container Path `/data/recordings`, Host Path your share (for example `/mnt/user/TV recordings`), Access Mode Read/Write. Apply.
-- **Docker compose:** add a volume to the Dispatcharr service and recreate it:
-
-  ```yaml
-  services:
-    dispatcharr:
-      volumes:
-        - ./data:/data
-        - /path/to/your/recordings:/data/recordings
-  ```
-
-Tips:
-
-- **Fast storage is best** (an SSD or cache pool): the buffer is written constantly while someone watches.
-- **Unraid "use cache: yes" shares:** the mover can move older buffer pieces to the array while someone is watching late at night, and rewinding that far would then fail. Use Dispatcharr's data folder, or set the share to cache only, if that happens.
-- Not on the Docker image: as long as `/data` (and `/data/recordings`, if you use it) are mapped to real folders, nothing is written inside the container itself.
+Recordings are Dispatcharr's own job; the plugin doesn't change where they go. Dispatcharr saves them in `/data/recordings` inside its container. To keep them on another disk or share, map it to that path the same way as above (container path **`/data/recordings`**), for example on Unraid a share that the mover moves to the array, since recordings are kept for good.
 
 ## TV guide (Sky)
 

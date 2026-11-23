@@ -111,10 +111,15 @@ class Plugin:
         free = t.get("free_gb") or {}
         where = ""
         if t.get("suggested_storage"):
-            names = {"data": "Dispatcharr's data folder", "recordings": "TV recordings folder"}
-            where = (f"; buffer folder {names.get(t.get('storage'), t.get('storage') or '?')}, suggested "
-                     f"{names.get(t['suggested_storage'])} ({t.get('suggested_why')}; free: data "
-                     f"{free.get('data')} GB, recordings {free.get('recordings')} GB)")
+            names = {"timeshift": "its own folder (/data/timeshift)", "data": "Dispatcharr's data folder",
+                     "recordings": "TV recordings folder"}
+            labels = {"timeshift": "own folder", "data": "data", "recordings": "recordings"}
+            space = ", ".join(f"{labels[k]} {free[k]} GB" for k in ("timeshift", "data", "recordings")
+                              if free.get(k) is not None)
+            where = (f"; buffer folder: {names.get(t.get('storage'), t.get('storage') or '?')}"
+                     + ("" if t.get("storage") == t["suggested_storage"] else
+                        f" (suggested: {names.get(t['suggested_storage'])}, because {t.get('suggested_why')})")
+                     + f"; free space: {space}")
         return f"{n} channel(s) buffered" + (f", window {t['window_min']} min" if t.get("window_min") else "") + where
 
     @staticmethod
