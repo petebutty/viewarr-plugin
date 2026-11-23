@@ -36,14 +36,12 @@ VERSION = 1
 
 ROOT = "/data/logos/viewarr-ts"
 URL_BASE = "/logos/viewarr-ts"
-# Where the buffer files really live (setting "timeshift_folder", a path inside Dispatcharr's container): a folder of
-# this plugin's own (SUBDIR) inside it, linked in at ROOT so Dispatcharr's web server still serves it. Empty, or a
-# folder that can't be used: Dispatcharr's own data folder (ROOT itself). Only SUBDIR is ever written or cleared, so
-# nothing else in the chosen folder is touched.
-SUBDIR = "viewarr-timeshift"
-# Folders that are never a sensible place (the container's own system folders), refused outright.
-SYSTEM_DIRS = ("/", "/app", "/bin", "/boot", "/dev", "/etc", "/lib", "/lib64", "/proc", "/root", "/run", "/sbin",
-               "/sys", "/usr", "/var", "/data")
+# Where the buffer files really live: always /data/timeshift, linked in at ROOT so Dispatcharr's web server serves
+# them (the same idea as Dispatcharr's own /data/recordings). Left alone it's a folder inside Dispatcharr's data
+# folder; to put it on another disk (a cache-only share, say) the admin maps that disk to /data/timeshift in Docker.
+# Only this plugin's own buffer folders (BUF_NAME) are ever cleared there, so nothing else in it is touched.
+BUF_DIR = "/data/timeshift"
+BUF_NAME = re.compile(r"^[0-9a-f]{32}$")
 # Before 0.6.8 the buffer could be kept in the recordings folder; whatever was left there is cleared once.
 OLD_RECORDINGS_DIR = "/data/recordings/.viewarr-timeshift"
 # Dispatcharr's own web server inside the container (uWSGI's HTTP port, which nginx hands /proxy/ to); overridable.
@@ -63,7 +61,7 @@ MIN_FREE_BYTES = 10 * 1024 ** 3
 LOW_FREE_BYTES = 5 * 1024 ** 3
 SPACE_EVERY_S = 60
 LOW_SPACE_REST_S = 300
-# suggest_storage() writes a probe file in each place: its answer is kept this long for the status.
+# buffer_space() writes a probe file: its answer is kept this long for the status.
 SUGGEST_TTL_S = 3600
 RESTARTS = 5
 RESTART_WINDOW_S = 600
@@ -98,10 +96,7 @@ def settings_of(settings):
         most = int(str(s.get("timeshift_max") or DEFAULT_MAX).strip())
     except ValueError:
         most = DEFAULT_MAX
-    folder = str(s.get("timeshift_folder") or "").strip()
-    if len(folder) > 1:
-        folder = folder.rstrip("/")
-    return on, max(10, min(window, 480)) * 60, max(1, min(most, 10)), folder
+    return on, max(10, min(window, 480)) * 60, max(1, min(most, 10))
 
 
 def _place_info(path):
@@ -118,49 +113,21 @@ def _place_info(path):
         return None
 
 
-_suggested = {"at": 0.0, "key": None, "value": None}
+_space = {"at": 0.0, "value": None}
 
 
-def suggest_storage(folder="", fresh=False):
-    """Where the buffer goes for the [folder] setting, and why. Returns (real folder or None for Dispatcharr's own
-    folder, {"folder": free GB or None, "data": free GB}, reason or ""). Kept for SUGGEST_TTL_S (asked every few
-    seconds) unless [fresh] or the setting changed."""
-    if (not fresh and _suggested["key"] == folder and _suggested["value"] is not None
-            and time.time() - _suggested["at"] < SUGGEST_TTL_S):
-        return _suggested["value"]
-    value = _suggest_storage(folder)
-    _suggested.update(at=time.time(), key=folder, value=value)
+def buffer_space(fresh=False):
+    """(free GB in /data/timeshift or None, whether it's its own mapped disk). Kept for SPACE_TTL_S unless [fresh]."""
+    if not fresh and _space["value"] is not None and time.time() - _space["at"] < SUGGEST_TTL_S:
+        return _space["value"]
+    info = _place_info(BUF_DIR)
+    try:
+        mapped = os.path.ismount(BUF_DIR)
+    except OSError:
+        mapped = False
+    value = (round(info[1] / 1e9) if info else None, mapped)
+    _space.update(at=time.time(), value=value)
     return value
-
-
-def _folder_problem(folder):
-    """Why [folder] can't hold the buffer, or None."""
-    if not folder.startswith("/"):
-        return "the folder must be a full path inside Dispatcharr's container, starting with /"
-    if folder in SYSTEM_DIRS or folder.startswith(("/proc/", "/sys/", "/dev/", "/etc/", "/usr/", "/app/")):
-        return "%s is one of the container's own folders" % folder
-    if os.path.realpath(folder).startswith(os.path.dirname(ROOT) + "/"):
-        return "%s is inside the folder the buffer is served from" % folder
-    if not os.path.isdir(folder):
-        return "%s doesn't exist in Dispatcharr's container (add it as a path or volume first)" % folder
-    return None
-
-
-def _suggest_storage(folder):
-    data = _place_info(os.path.dirname(ROOT))  # /data/logos
-    gb = lambda i: round(i[1] / 1e9) if i else None
-    if not folder:
-        return None, {"folder": None, "data": gb(data)}, ""
-    problem = _folder_problem(folder)
-    info = None if problem else _place_info(os.path.join(folder, SUBDIR))
-    free = {"folder": gb(info), "data": gb(data)}
-    if problem:
-        return None, free, problem
-    if info is None:
-        return None, free, "%s can't be written to" % folder
-    if info[1] < MIN_FREE_BYTES:
-        return None, free, "%s has under 10 GB free" % folder
-    return os.path.join(folder, SUBDIR), free, ""
 
 
 def _clear_old_recordings_dir(log=None):
@@ -175,29 +142,27 @@ def _clear_old_recordings_dir(log=None):
         pass
 
 
-def use_storage(real, log=None):
-    """Points ROOT at [real]: a plain folder in Dispatcharr's data folder (None), or a link to the plugin's own
-    folder in the chosen place. Only called with no buffer running."""
+def link_buffer_dir(log=None):
+    """Makes ROOT a link to /data/timeshift (once, at start, before any buffer runs). Older versions kept the buffer
+    in ROOT itself or behind a link elsewhere; that's replaced, and their leftovers cleared."""
     try:
-        if real is None:
-            if os.path.islink(ROOT):
-                os.unlink(ROOT)
-            os.makedirs(ROOT, exist_ok=True)
-        else:
-            os.makedirs(real, exist_ok=True)
-            if os.path.islink(ROOT):
-                if os.readlink(ROOT) == real:
-                    return True
-                os.unlink(ROOT)
-            elif os.path.isdir(ROOT):
-                shutil.rmtree(ROOT, ignore_errors=True)
-            os.symlink(real, ROOT)
+        os.makedirs(BUF_DIR, exist_ok=True)
+        if os.path.islink(ROOT):
+            old = os.readlink(ROOT)
+            if old == BUF_DIR:
+                return True
+            os.unlink(ROOT)
+            if old.startswith(BUF_DIR + "/") and os.path.basename(old) == "viewarr-timeshift":
+                shutil.rmtree(old, ignore_errors=True)  # 0.6.8 test builds: a folder inside /data/timeshift
+        elif os.path.isdir(ROOT):
+            shutil.rmtree(ROOT, ignore_errors=True)
+        os.symlink(BUF_DIR, ROOT)
         if log:
-            log("timeshift: buffer folder is %s" % (real or ROOT))
+            log("timeshift: buffer folder is %s" % BUF_DIR)
         return True
     except OSError as e:
         if log:
-            log("timeshift: buffer folder %s couldn't be used (%s)" % (real or ROOT, e))
+            log("timeshift: buffer folder %s couldn't be used (%s)" % (BUF_DIR, e))
         return False
 
 
@@ -310,10 +275,14 @@ def sweep(log=None, log_dir=None):
     except OSError:
         pass
     left = 0
-    if os.path.isdir(ROOT):
-        for name in os.listdir(ROOT):
-            shutil.rmtree(os.path.join(ROOT, name), ignore_errors=True)
-            left += 1
+    for place in (ROOT, BUF_DIR):
+        if not os.path.isdir(place):
+            continue
+        for name in os.listdir(place):
+            # Only the plugin's own buffer folders: anything else someone keeps in a mapped disk stays.
+            if BUF_NAME.match(name) and os.path.isdir(os.path.join(place, name)):
+                shutil.rmtree(os.path.join(place, name), ignore_errors=True)
+                left += 1
     logs = 0
     if log_dir and os.path.isdir(log_dir):
         for name in os.listdir(log_dir):
@@ -365,20 +334,13 @@ class Manager:
         self.settings_at = time.time()
         try:
             raw = self.settings_fn() or {}
-            self.on, self.window_s, self.most, folder = settings_of(raw)
+            self.on, self.window_s, self.most = settings_of(raw)
             # "all" channels, or only those without the provider's catch-up (the TVs skip asking for those).
             self.channels = "no_catchup" if str(raw.get("timeshift_channels") or "all").strip() == "no_catchup" else "all"
-            # A new place only once nothing is buffered, so a buffer being watched never moves.
-            self.folder = folder
-            real, _free, why = suggest_storage(folder)
-            if not getattr(self, "placed", False) or (real != getattr(self, "real", None) and not self.buffers):
+            if not getattr(self, "placed", False):
                 log = getattr(self, "log", None)
-                if not getattr(self, "placed", False):
-                    _clear_old_recordings_dir(log)
-                if use_storage(real, log):
-                    self.real, self.placed = real, True
-                    if log and why:
-                        log("timeshift: using Dispatcharr's own folder: %s" % why)
+                _clear_old_recordings_dir(log)
+                self.placed = link_buffer_dir(log)
         except Exception:
             pass
 
@@ -575,9 +537,8 @@ def status():
     m = _manager
     if m is None:
         return {"on": None, "buffers": 0}
-    folder = getattr(m, "folder", "")
-    _real, free, why = suggest_storage(folder)
-    real = getattr(m, "real", None)
+    free, mapped = buffer_space()
+    need = round(m.window_s / 3600 * 3 * m.most)  # about 3 GB an hour per HD channel
     return {"on": m.on, "window_min": m.window_s // 60, "buffers": len(m.buffers),
             "channels": sorted(m.buffers), "refused": dict(m.refused),
-            "folder": folder, "in_folder": real is not None, "why": why, "free_gb": free}
+            "folder": BUF_DIR, "mapped": mapped, "free_gb": free, "need_gb": need}

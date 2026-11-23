@@ -108,14 +108,13 @@ class Plugin:
         if t.get("on") is False:
             return "off"
         n = t.get("buffers", 0)
-        free = t.get("free_gb") or {}
         where = ""
-        if "in_folder" in t:
-            if t["in_folder"]:
-                where = f"; kept in {t.get('folder')} ({free.get('folder')} GB free)"
-            else:
-                where = (f"; kept in Dispatcharr's own folder ({free.get('data')} GB free"
-                         + (f"; {t['folder']} not used: {t['why']}" if t.get("folder") and t.get("why") else "") + ")")
+        if "mapped" in t:
+            free, need = t.get("free_gb"), t.get("need_gb")
+            where = (f"; kept in /data/timeshift ({'its own disk' if t['mapped'] else 'inside Dispatcharr' + chr(39) + 's data folder'}"
+                     + (f", {free} GB free" if free is not None else ", can't be written to") + ")")
+            if free is not None and need and free < need:
+                where += f"; may run short: the settings can need about {need} GB"
         return f"{n} channel(s) buffered" + (f", window {t['window_min']} min" if t.get("window_min") else "") + where
 
     @staticmethod

@@ -116,9 +116,9 @@ To pause and rewind live TV, the plugin keeps the last part of each channel bein
 
 ### Do I need to do anything?
 
-**No.** It works straight away: with **Live timeshift: folder** left empty, the buffer goes in Dispatcharr's own folder.
+**No.** The buffer is always kept in **`/data/timeshift`** inside Dispatcharr's container, the same way Dispatcharr keeps recordings in `/data/recordings`. Left alone, that's just a folder in Dispatcharr's data folder, and it works straight away.
 
-You only need to set it if you want the buffer somewhere better, such as a fast cache disk. See [Choosing the folder](#choosing-the-folder) below.
+To put it on a better disk, map that disk to `/data/timeshift` in Docker. That's the only step; there's nothing to set in the plugin. See [Putting it on a cache disk](#putting-it-on-a-cache-disk).
 
 ### How much space it needs
 
@@ -132,11 +132,7 @@ You only need to set it if you want the buffer somewhere better, such as a fast 
 - **Fast**: an SSD or NVMe is best. The buffer is written non-stop while someone watches.
 - **Never moved**: on Unraid, a **cache-only share** (Primary storage: your cache pool, Secondary storage: **None**), so the mover never touches it. Not a share the mover moves to the array: the mover can shift buffer pieces away while someone's watching, and rewinding then fails.
 
-### Choosing the folder
-
-Two steps: let Dispatcharr's container see the folder, then type its path in the plugin.
-
-**1. Add the folder to Dispatcharr's container**
+### Putting it on a cache disk
 
 *Unraid*
 1. **Shares → Add Share.** Name it (for example `timeshift`). **Primary storage**: your cache pool. **Secondary storage**: **None**. Add Share.
@@ -159,13 +155,9 @@ services:
 
 *Synology, TrueNAS, Portainer, CasaOS and others*: in Dispatcharr's container settings, find **Volumes** (also called Storage, Mounts or Folders) and add one: a folder on a fast disk, mounted at **`/data/timeshift`**, read/write. Save and let the container restart.
 
-**2. Type the path in the plugin**
+**Check it worked:** press **Sports service status**. After **live timeshift** it says **kept in /data/timeshift (its own disk, … GB free)**. If the free space is less than your timeshift settings could need, it says so.
 
-Dispatcharr → **Plugins → Viewarr → Live timeshift: folder**: type the **container path**, for example `/data/timeshift` (not the path on your server, such as `/mnt/cache/…`). Save. Viewarr admins can also set it in Viewarr → Settings → Plugins → Viewarr.
-
-The plugin keeps its files in a `viewarr-timeshift` folder inside it and touches nothing else there. It moves over once nobody's watching a buffered channel, so nobody's picture jumps.
-
-**Check it worked:** press **Sports service status**. After **live timeshift** it says **kept in /data/timeshift**, with the free space. If the folder can't be used (it doesn't exist in the container, can't be written to, or has under 10 GB free), the buffer stays in Dispatcharr's own folder and the status says why.
+The plugin only ever clears its own buffer folders in `/data/timeshift`; anything else there is left alone.
 
 ## TV guide (Sky)
 
@@ -242,7 +234,6 @@ That's it. Nobody needs to set anything up in Viewarr: each TV finds the plugin 
 | Live timeshift: channels | All channels (default), or only channels without catch-up (those keep using the provider's catch-up). |
 | **Live timeshift: buffer length** | How far back a TV can rewind: 30 minutes to 4 hours, default 2 hours. An HD channel takes about 3 GB an hour on the server while it's watched. |
 | **Live timeshift: channels at once** | Default 3. Beyond it a TV has catch-up (if the channel has it) or live only. |
-| **Live timeshift: folder** | Empty (default): Dispatcharr's own folder. Or a path inside Dispatcharr's container, preferably a cache-only share the mover never touches. See [Choosing the folder](#choosing-the-folder). |
 | **Backups** | On by default. Off: Viewarr hides Backups and the plugin refuses them; saved ones are kept. |
 | **TV guide (Sky)** and its options | Off by default. See [TV guide (Sky)](#tv-guide-sky). |
 | **Channel logos from Sky**, its sources and country | Off by default. See [Channel logos](#channel-logos). |
