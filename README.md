@@ -52,6 +52,7 @@ If the plugin is missing or stops, the TVs go back to doing the work themselves.
 - **Preview stream order** (shows what would change now, changing nothing) and **Put stream order back**, **Undo a change**, **Recent changes from reports** and **Measure streams now** buttons (see below).
 - **TV guide status**, **Fetch the TV guide now** and **Compare guide with another source** buttons (see [TV guide (Sky)](#tv-guide-sky)).
 - **Channel logos status** and **Preview channel logos** buttons (see [Channel logos](#channel-logos)).
+- **What it did last**, in Viewarr (Settings → Plugins → Viewarr, admins only): one line per job with its last run, for example "Best stream first · 15:06 · 2 channels reordered" or "TV guide (Sky) · 04:31 · Scotland: 140 channels matched". Anything that failed or needs a look says so. Kept up to date every round (app data key `viewarr_activity`, written for admins only).
 
 ## Best stream first
 

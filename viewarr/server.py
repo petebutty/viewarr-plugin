@@ -501,6 +501,7 @@ def _publish(log=None):
         users += 1
     # What's just arrived on each streaming service (justadded.py, JustWatch): once a day, for Viewarr's
     # "<service> · Just added" rows.
+    problems = {}
     just = None
     try:
         ja = _module("justadded")
@@ -511,6 +512,7 @@ def _publish(log=None):
             ja.clear(_data_dir())
             just = {"off": True}
     except Exception as exc:
+        problems["just_added"] = str(exc)[:160]
         if log:
             log.warning("Viewarr: just added failed: %s", exc)
     # IPTV watch progress kept in step with each user's Emby / Jellyfin (watchsync.py), for users who switched it on.
@@ -524,6 +526,7 @@ def _publish(log=None):
             watch = {"off": True}
             ws.sweep_indexes(set(), log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
     except Exception as exc:
+        problems["watch"] = str(exc)[:160]
         if log:
             log.warning("Viewarr: watch sync failed: %s", exc)
     recorded = 0
@@ -531,6 +534,7 @@ def _publish(log=None):
         try:
             recorded = record_wanted(result, channels, log)
         except Exception as exc:
+            problems["recordings"] = str(exc)[:160]
             if log:
                 log.warning("Viewarr: team / game recordings failed: %s", exc)
     # Reports from the TVs (reports.py) and Best stream first (streamorder.py): both house-wide, both their own file.
@@ -545,6 +549,12 @@ def _publish(log=None):
     }
     if log:
         log.info("Viewarr server sports: %s", status)
+    # One line per job for Viewarr's Activity page (admins only); never allowed to spoil the round.
+    try:
+        _module("activity").update(status, fn, _data_dir(), problems)
+    except Exception as exc:
+        if log:
+            log.warning("Viewarr: activity page not written: %s", exc)
     return status
 
 
@@ -679,6 +689,10 @@ def service(stop_event, log=None, status_path=None):
                 status = {"at": int(time.time()), "error": str(exc)[:300]}
                 if log:
                     log.exception("Viewarr server sports round failed")
+                try:
+                    _module("activity").update({"at": status["at"]}, dict(_FN), _data_dir(), {"sports": status["error"]})
+                except Exception:
+                    pass
             if status_path and not status.get("skipped"):
                 try:
                     with open(status_path, "w", encoding="utf-8") as f:
