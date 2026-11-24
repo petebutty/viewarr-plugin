@@ -215,6 +215,8 @@ class Plugin:
             return self._reports_status()
         if action == "measure_now":
             return self._measure_now(context)
+        if action == "just_added_from_tv":
+            return self._just_added_from_tv(params, context)
         if action.startswith("backup_") and ((context or {}).get("settings") or {}).get("backups", True) is False:
             return {"status": "error", "message": "Backups are switched off in the Viewarr plugin's settings."}
         if action == "backup_save":
@@ -233,6 +235,16 @@ class Plugin:
     # need them declared.)
     # Backups: Viewarr's whole setup as Viewarr saves it (its settings, and its sign-ins already encrypted on the TV
     # with the admin's own key). Admins only: Dispatcharr lets only admins run plugin actions.
+
+    # just_added_from_tv: called by Viewarr itself (undeclared, as the backups): a TV's own JustWatch lists for the
+    # house, since JustWatch refuses servers behind a VPN (justadded.from_tv). Admins only, as every plugin action.
+    def _just_added_from_tv(self, params, context):
+        log = (context or {}).get("logger")
+        try:
+            got = self._module("justadded").from_tv(_DATA, params.get("data"), log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
+        except Exception as exc:
+            return {"status": "error", "message": f"Couldn't take the Just added lists: {exc}"}
+        return {"status": "success", "result": got, "message": "Just added lists shared with everyone."}
 
     def _backup_save(self, params):
         data = params.get("data")

@@ -15,7 +15,7 @@ If the plugin is missing or stops, the TVs go back to doing the work themselves.
 
 - **Best stream first.** For every channel with more than one stream, the best stream is put first in Dispatcharr, so every app and TV in the house starts on it. See [Best stream first](#best-stream-first).
 - **Measuring streams (at night).** Every stream's real picture size and codec, measured with ffprobe in a quiet window so the ranking uses facts rather than name tags. See [Measuring streams](#measuring-streams).
-- **Just added.** Once a day it reads what arrived on each streaming service in the UK over the last fortnight (older films newly added, and new seasons of shows), from JustWatch's web feed, and hands it to every TV for Viewarr's "<service> · Just added" rows. TMDB can't do this: it knows which service has a title, not when it arrived.
+- **Just added.** Once a day it reads what arrived on each streaming service in the UK over the last fortnight (older films newly added, and new seasons of shows), from JustWatch's web feed, and hands it to every TV for Viewarr's "<service> · Just added" rows. TMDB can't do this: it knows which service has a title, not when it arrived. **Behind a VPN** (JustWatch refuses VPN addresses), an admin's TV fetches the lists over your own connection and hands them to the plugin (Viewarr 0.29.9.3 or later); you can then set the Just added source to Off so the plugin stops trying itself.
 - **Reports from the TVs.** Wrong guide, guide times out, dead stream, wrong logo or name, reported from Viewarr, are fixed straight away and can be undone. See [Reports from the TV](#reports-from-the-tv).
 - **Live now.** It goes through your guide and sports and event groups, and keeps only real live sport:
   - entries the guide marks as live;

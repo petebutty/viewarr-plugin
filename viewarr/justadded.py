@@ -161,6 +161,11 @@ def run(data_dir, log=None):
         {"name": name, "movies": [i for i in items if i["t"] == "m"][:PER_SERVICE], "shows": [i for i in items if i["t"] == "s"][:PER_SERVICE]}
         for name, items in lists.items()
     ]}
+    return _publish(value, log)
+
+
+def _publish(value, log=None, by=""):
+    """The lists to every active user's app data (viewarr_just_added)."""
     # Under Dispatcharr's 128 KB per stored item: fewer per service if a busy fortnight would go over.
     keep = PER_SERVICE
     while keep > 5 and len(json.dumps(value, separators=(",", ":")).encode()) > 120_000:
@@ -177,8 +182,32 @@ def run(data_dir, log=None):
         users += 1
     n = sum(len(s["movies"]) + len(s["shows"]) for s in value["services"])
     if log:
-        log("just added: %d titles across %d services to %d users (%d KB)" % (n, len(value["services"]), users, size // 1024))
+        log("just added: %d titles across %d services to %d users (%d KB)%s" % (n, len(value["services"]), users, size // 1024, by))
     return {"titles": n, "services": len(value["services"]), "bytes": size}
+
+
+def from_tv(data_dir, value, log=None):
+    """A TV's own JustWatch lists for the house (Viewarr's action just_added_from_tv; 2026-11-24): JustWatch refuses
+    servers behind a VPN, so a TV asks from the house's own connection and hands the lists here, and they're shared
+    with everyone as this file's own are. Checked for shape and size; only known services; marks today as done."""
+    if not isinstance(value, dict) or value.get("v") != 1 or not isinstance(value.get("services"), list):
+        raise ValueError("not Just added lists")
+    known = {name for name, _ in SERVICES}
+    services = []
+    for sv in value["services"][:len(SERVICES)]:
+        if not isinstance(sv, dict) or sv.get("name") not in known:
+            continue
+        keep = lambda xs: [i for i in (xs if isinstance(xs, list) else []) if isinstance(i, dict) and isinstance(i.get("title"), str)][:PER_SERVICE]
+        services.append({"name": sv["name"], "movies": keep(sv.get("movies")), "shows": keep(sv.get("shows"))})
+    if not services:
+        raise ValueError("no services in the lists")
+    clean = {"v": 1, "at": int(time.time()), "from": "tv", "services": services}
+    if len(json.dumps(clean, separators=(",", ":")).encode()) > 200_000:
+        raise ValueError("lists too big")
+    os.makedirs(data_dir, exist_ok=True)
+    with open(os.path.join(data_dir, "just_added_day.txt"), "w") as f:
+        f.write(clock.local_today().isoformat())
+    return _publish(clean, log, by=" (from a TV)")
 
 
 def clear(data_dir):
