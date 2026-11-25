@@ -71,6 +71,9 @@ RESTART_WINDOW_S = 600
 RESTART_BACKOFF_S = 20
 RESTART_BACKOFF_MAX_S = 300
 GIVE_UP_S = 900
+# A channel's buffer starts only once it has been playing this long: connecting in its first seconds, while the TV's
+# own player is still filling up, made the picture stutter at the start (2026-11-25).
+START_DELAY_S = 15
 
 
 def channel_playing(uuid):
@@ -328,6 +331,8 @@ class Manager:
         self.log_dir = os.path.join(data_dir, "timeshift")
         self.settings_fn = settings_fn
         self.failed_until = {}
+        # When each wanted channel was first seen playing (for START_DELAY_S).
+        self.playing_since = {}
         self.log = log or (lambda m: None)
         self.buffers = {}
         self.refused = {}
@@ -429,8 +434,13 @@ class Manager:
                 # (After a failed start, that channel waits a minute before trying again: no start every second.)
                 if time.time() < self.failed_until.get(uuid, 0):
                     continue
-                # (Only once Dispatcharr has the channel playing for the TV: see channel_playing.)
+                # (Only once Dispatcharr has had the channel playing for the TV a while: see channel_playing and
+                # START_DELAY_S.)
                 if not channel_playing(uuid):
+                    self.playing_since.pop(uuid, None)
+                    continue
+                since = self.playing_since.setdefault(uuid, now)
+                if now - since < START_DELAY_S:
                     continue
                 why = self._refuse_reason()
                 if why:
@@ -480,6 +490,8 @@ class Manager:
             if not b.ready and b.segments() >= 2:
                 b.ready = True
                 changed = True
+        for uuid in [u for u in self.playing_since if u not in wanted or u in self.buffers]:
+            self.playing_since.pop(uuid, None)
         # Refusals are forgotten once nobody asks for that channel.
         for uuid in [u for u in self.refused if u not in wanted]:
             self.refused.pop(uuid)
