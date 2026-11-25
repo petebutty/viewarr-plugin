@@ -65,6 +65,27 @@ LOW_SPACE_REST_S = 300
 SUGGEST_TTL_S = 3600
 RESTARTS = 5
 RESTART_WINDOW_S = 600
+# After a stop, the next start waits: 20 s, then twice as long each time (at most 5 min). Given up (RESTARTS in
+# RESTART_WINDOW_S): that channel is left alone GIVE_UP_S. (2026-11-25: restarts every few seconds against a channel
+# whose stream was failing each held one of Dispatcharr's web workers, until none was left: no live TV, no app.)
+RESTART_BACKOFF_S = 20
+RESTART_BACKOFF_MAX_S = 300
+GIVE_UP_S = 900
+
+
+def channel_playing(uuid):
+    """Whether Dispatcharr has the channel running (its stream state "active"), read from its own Redis. The buffer
+    only connects to a channel that's playing: connecting while it's starting or failing waits inside Dispatcharr's
+    web worker. Unknown (Redis unreadable): not playing."""
+    try:
+        from core.utils import RedisClient
+        r = RedisClient.get_client()
+        state = r.hget("live:channel:%s:metadata" % uuid, "state")
+        if isinstance(state, bytes):
+            state = state.decode("utf-8", "replace")
+        return state == "active"
+    except Exception:
+        return False
 ENTRY_TTL_S = 600
 
 # A channel uuid, or the handle of a stream a TV plays directly (Dispatcharr's preview hash).
@@ -180,6 +201,7 @@ class Buffer:
         self.proc = None
         self.ready = False
         self.restarts = []
+        self.next_start = 0.0
         self.log_path = None
 
     @property
@@ -407,6 +429,9 @@ class Manager:
                 # (After a failed start, that channel waits a minute before trying again: no start every second.)
                 if time.time() < self.failed_until.get(uuid, 0):
                     continue
+                # (Only once Dispatcharr has the channel playing for the TV: see channel_playing.)
+                if not channel_playing(uuid):
+                    continue
                 why = self._refuse_reason()
                 if why:
                     if self.refused.get(uuid) != why:
@@ -432,13 +457,22 @@ class Manager:
             if not b.alive():
                 b.restarts = [t for t in b.restarts if now - t < RESTART_WINDOW_S]
                 if len(b.restarts) >= RESTARTS:
-                    self.log("timeshift: %s keeps stopping (%s); given up" % (uuid, b.last_error() or "no message"))
+                    self.log("timeshift: %s keeps stopping (%s); given up for %d min" % (uuid, b.last_error() or "no message", GIVE_UP_S // 60))
                     self.buffers.pop(uuid).kill()
                     self.refused[uuid] = "the stream keeps stopping"
+                    # (Left alone a while: it was started afresh the next round, and gave up again, without end.)
+                    self.failed_until[uuid] = now + GIVE_UP_S
                     changed = True
                     continue
+                # Not straight away: after a wait that doubles each time, and only with the channel playing again.
+                if b.next_start == 0.0:
+                    wait = min(RESTART_BACKOFF_S * (2 ** len(b.restarts)), RESTART_BACKOFF_MAX_S)
+                    b.next_start = now + wait
+                    self.log("timeshift: %s stopped (%s); trying again in %d s" % (uuid, b.last_error() or "no message", wait))
+                if now < b.next_start or not channel_playing(uuid):
+                    continue
+                b.next_start = 0.0
                 b.restarts.append(now)
-                self.log("timeshift: %s stopped (%s); starting it again" % (uuid, b.last_error() or "no message"))
                 try:
                     b.spawn(self.log_dir, append=True)
                 except Exception:
