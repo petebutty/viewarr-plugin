@@ -72,9 +72,13 @@ _UUID = re.compile(r"^[A-Za-z0-9_-]{8,80}$")
 
 
 def _popen():
-    """The standard library's Popen where gevent keeps it, else subprocess.Popen as the measuring thread uses (in a
-    restarted Dispatcharr gevent's get_original returned None here, and every start failed)."""
+    """Popen for ffmpeg. The subprocess module as Dispatcharr has it (gevent's, once it's patched in): it starts
+    processes from the service's thread. gevent's saved copy of the standard library's Popen (0.6.6 used it) can't
+    fork under gevent: every start failed with "'NoneType' object is not callable" (2026-11-25), and timeshift never
+    started on any channel. That copy only when the module's own is somehow missing."""
     import subprocess
+    if callable(getattr(subprocess, "Popen", None)):
+        return subprocess.Popen
     try:
         from gevent import monkey
         original = monkey.get_original("subprocess", "Popen")
@@ -82,7 +86,7 @@ def _popen():
             return original
     except Exception:
         pass
-    return subprocess.Popen
+    raise RuntimeError("no way to start ffmpeg here")
 
 
 def settings_of(settings):
