@@ -15,7 +15,10 @@ the streams of each channel that has more than one, and puts the best first:
 A channel is only reordered when its best stream beats the current first by a whole point, and at most once an hour.
 The order each channel had before the first change is kept in streamorder.json, so "Put stream order back" can undo
 everything. Channels in Event Channel Managarr's groups are left alone, as are channels listed in the state file's
-"keep" list (or carrying ``viewarr_keep_order`` in their custom properties, on Dispatcharr versions that have them).
+"keep" list (or carrying ``viewarr_keep_order`` in their custom properties, on Dispatcharr versions that have them),
+and channels an admin set the best stream of by hand in the app (Source → hold OK; each admin's app data key
+``viewarr_stream_pins``, {"pins": {channel id: stream id}}). Those are shared with every TV (pinned_channels) and
+"Put stream order back" leaves them as set.
 """
 
 import json
@@ -24,6 +27,7 @@ import re
 import time
 
 HEALTH_KEY = "viewarr_stream_health"
+PINS_KEY = "viewarr_stream_pins"
 STATE_FILE = "streamorder.json"
 HOLD_S = 3600
 DAY_S = 86400
@@ -195,9 +199,32 @@ def quiet_channel_ids(groups=None):
     return sorted(out)
 
 
-def keep_order(channel, state):
-    """True when the owner asked for this channel's order to stay as it is."""
+def pinned_channels():
+    """Every admin's channels with a best stream set by hand: {channel id: stream id}. The newest list wins a clash.
+    Only admins' lists count: only an admin can change a channel's streams in Dispatcharr."""
+    try:
+        from apps.accounts.models import UserAppData
+        rows = UserAppData.objects.filter(key=PINS_KEY, user__user_level__gte=10).order_by("updated_at").only("value")
+    except Exception:
+        return {}
+    out = {}
+    for row in rows:
+        pins = (row.value or {}).get("pins") if isinstance(row.value, dict) else None
+        if not isinstance(pins, dict):
+            continue
+        for cid, sid in pins.items():
+            try:
+                out[int(cid)] = int(sid)
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def keep_order(channel, state, pinned=None):
+    """True when the owner asked for this channel's order to stay as it is (or an admin set its best stream)."""
     if channel.id in set(state.get("keep") or []):
+        return True
+    if channel.id in (pinned if pinned is not None else pinned_channels()):
         return True
     props = getattr(channel, "custom_properties", None)
     return isinstance(props, dict) and bool(props.get("viewarr_keep_order"))
@@ -332,11 +359,12 @@ def plan(data_dir=None, now=None, extra_fails=None):
     health = house_health(now, extra_fails)
     skip_groups = managed_groups()
     quiet = quiet_groups()
+    pinned = pinned_channels()
     out = []
     for channel, links in _links_by_channel():
         group = (channel.channel_group.name if channel.channel_group_id else "") or ""
         # (Stripped: a Dispatcharr group name can carry a trailing space, the settings text can't.)
-        if group.strip().lower() in skip_groups or keep_order(channel, state):
+        if group.strip().lower() in skip_groups or keep_order(channel, state, pinned):
             continue
         # A quiet group (club TV): ordered by quality only; being off air isn't a fail.
         p = _proposal(channel, links, {} if group.strip().lower() in quiet else health, now, state)
@@ -387,7 +415,11 @@ def reset(data_dir):
     from apps.channels.models import ChannelStream
     state = load_state(data_dir)
     restored = 0
+    pinned = pinned_channels()
     for cid, entry in (state.get("channels") or {}).items():
+        # (A channel an admin set the best stream of by hand stays as set.)
+        if int(cid) in pinned:
+            continue
         links = list(ChannelStream.objects.filter(channel_id=int(cid)))
         original = [sid for sid in entry.get("original") or [] if any(cs.stream_id == sid for cs in links)]
         # Streams added since go after the original ones, in their current order.

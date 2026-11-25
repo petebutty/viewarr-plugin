@@ -71,6 +71,8 @@ A channel is only moved when its best stream beats the current first by a whole 
 
 Left alone: channels with a single stream, and channels in the groups [Event Channel Managarr](https://github.com/PiratesIRC/Dispatcharr-Event-Channel-Managarr-Plugin) manages (it orders its own). To pin one channel, add its id to the `keep` list in `_data/viewarr/streamorder.json`.
 
+**Setting a channel's best stream by hand** (Viewarr 0.29.9.5 and later): in live TV, open **Source**, hold OK on a stream and pick **Make this the best stream**. Viewarr puts that stream first for the channel in Dispatcharr (admins only), and the plugin leaves the channel as set: Best stream first skips it and **Put stream order back** doesn't touch it. The pinned channels are shared with every TV, so their own best-source choice follows it too. **Let Viewarr choose again** on the same stream hands the channel back; it's sorted again on the next round. (Each admin's list is kept in their Dispatcharr storage, key `viewarr_stream_pins`.)
+
 ## Measuring streams
 
 Dispatcharr only records a stream's picture size and codec (`stream_stats`, shown in Viewarr's Sources menu) when the stream plays through its proxy, so most streams are never measured and Best stream first has to trust the names. With **Measure streams at night** on (the default), the plugin measures them itself:

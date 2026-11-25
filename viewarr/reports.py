@@ -337,9 +337,14 @@ def house_value(state, order_week, now, quiet_on=True):
         quiet = _streamorder().quiet_channel_ids() if quiet_on else []
     except Exception:
         quiet = []
+    # Channels an admin set the best stream of by hand: every TV starts them on Dispatcharr's order (streamorder.py).
+    try:
+        pinned = {str(c): st for c, st in _streamorder().pinned_channels().items()}
+    except Exception:
+        pinned = {}
     value = {"updated_at": now, "offsets": dict(state["offsets"]), "changes": changes,
              "order": {"reordered": order_week}, "needs_pick": list(state["needs_pick"][-KEEP_PICKS:]),
-             "quiet_channels": quiet}
+             "quiet_channels": quiet, "pinned_channels": pinned}
     while _size(value) > MAX_BYTES and value["changes"]:
         value["changes"] = value["changes"][1:]
     return value
