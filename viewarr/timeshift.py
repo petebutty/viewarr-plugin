@@ -34,8 +34,19 @@ REQ_KEY = "viewarr_timeshift_req"
 REPLY_KEY = "viewarr_timeshift"
 VERSION = 1
 
+# Inside Dispatcharr's watched logos folder (its web server serves that folder at /logos/): the service sets the real
+# place from Dispatcharr's own setting (use_logos) before any buffer runs.
 ROOT = "/data/logos/viewarr-ts"
 URL_BASE = "/logos/viewarr-ts"
+
+
+def use_logos(path):
+    """The watched logos folder as Dispatcharr has it configured."""
+    global ROOT
+    if path:
+        ROOT = os.path.join(str(path), "viewarr-ts")
+
+
 # Where the buffer files really live: always /data/timeshift, linked in at ROOT so Dispatcharr's web server serves
 # them (the same idea as Dispatcharr's own /data/recordings). Left alone it's a folder inside Dispatcharr's data
 # folder; to put it on another disk (a cache-only share, say) the admin maps that disk to /data/timeshift in Docker.
@@ -50,7 +61,10 @@ FFMPEG = "/usr/local/bin/ffmpeg" if os.path.exists("/usr/local/bin/ffmpeg") else
 
 SEGMENT_S = 4
 KEEPALIVE_S = 60
-POLL_S = 1.0
+# (Three looks a second: a TV that has left a channel frees its buffer, and with it the provider's line, before the
+# next channel is refused for want of one. 2026-11-26: with a recording on the other line, a change of channel
+# failed on its first try and fell back to the backup provider.)
+POLL_S = 0.3
 SETTINGS_EVERY_S = 10
 DEFAULT_WINDOW_MIN = 120
 DEFAULT_MAX = 3

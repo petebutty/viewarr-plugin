@@ -595,8 +595,18 @@ def _timeshift_status():
         return None
 
 
+# The plugin's data folder (Dispatcharr's context["data_dir"]) and its watched logos folder, set by plugin.py when it
+# loads this file. Unset (this file run on its own): where they have always been.
+DATA_DIR = None
+LOGOS_DIR = None
+
+
 def _data_dir():
-    return os.path.join(os.path.dirname(_HERE), "_data", "viewarr")
+    return DATA_DIR or os.path.join(os.path.dirname(_HERE), "_data", "viewarr")
+
+
+def _logos_dir():
+    return LOGOS_DIR or "/data/logos"
 
 
 def house_round(log=None, fn=None):
@@ -670,6 +680,7 @@ def service(stop_event, log=None, status_path=None):
     # Timeshift (timeshift.py): a buffer per channel being watched, so any TV can pause and rewind live TV. Its own
     # thread, watching the TVs' requests every second; it stops every buffer when the service stops.
     try:
+        _module("timeshift").use_logos(_logos_dir())
         _module("timeshift").start(stop_event, _data_dir(), _own_settings,
                                    log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
     except Exception as exc:
@@ -677,6 +688,7 @@ def service(stop_event, log=None, status_path=None):
             log.warning("Viewarr: timeshift thread didn't start: %s", exc)
     # The Sky TV guide and channel logos (removed in 0.6.8): what they changed in Dispatcharr is put back once.
     try:
+        _module("retire").GUIDE_DIR = os.path.join(_logos_dir(), "viewarr-epg")
         _module("retire").run(_data_dir(), log=(lambda m: log.info("Viewarr: %s", m)) if log else None)
     except Exception as exc:
         if log:

@@ -11,6 +11,7 @@ addresses). Only addresses are kept, never secrets.
 import importlib.util
 import json
 import os
+import shutil
 import re
 import time
 
@@ -22,10 +23,57 @@ except Exception:  # a broken manifest mustn't stop Dispatcharr loading the plug
     _MANIFEST = {}
 
 
-# Backups live beside the plugins, in Dispatcharr's plugin data folder: never served by any Dispatcharr address, and
-# kept when the plugin itself is updated or reinstalled.
-_DATA = os.path.join(os.path.dirname(_HERE), "_data", "viewarr")
-_BACKUPS = os.path.join(_DATA, "backups")
+# The plugin's own data folder (backups, state): the one Dispatcharr hands over in context["data_dir"], never served by
+# any Dispatcharr address and kept when the plugin itself is updated or reinstalled. Until a context has been seen
+# (import time, before the first action or leadership hook) it's where that folder has always been.
+_OLD_DATA = os.path.join(os.path.dirname(_HERE), "_data", "viewarr")
+_DATA = _OLD_DATA
+# Dispatcharr's watched logos folder (its web server serves it): where the timeshift's link sits.
+_LOGOS = "/data/logos"
+
+
+def _backups():
+    return os.path.join(_DATA, "backups")
+
+
+def _carry_over(old, new):
+    """Whatever the old data folder holds that the new one doesn't (backups, state) is copied across, so a change of
+    place loses nothing. The old folder is left as it is; nothing already in the new one is replaced."""
+    if not os.path.isdir(old) or os.path.abspath(old) == os.path.abspath(new):
+        return
+    for root, _dirs, files in os.walk(old):
+        rel = os.path.relpath(root, old)
+        dest = new if rel == "." else os.path.join(new, rel)
+        os.makedirs(dest, exist_ok=True)
+        for name in files:
+            target = os.path.join(dest, name)
+            if not os.path.exists(target):
+                try:
+                    shutil.copy2(os.path.join(root, name), target)
+                except OSError:
+                    pass
+
+
+def _use(context):
+    """Takes the plugin's folders from the context Dispatcharr gives every action and leadership hook."""
+    global _DATA, _LOGOS
+    ctx = context or {}
+    try:
+        data = ctx.get("data_dir")
+        if data:
+            data = str(data)
+            if os.path.abspath(data) != os.path.abspath(_DATA):
+                os.makedirs(data, exist_ok=True)
+                _carry_over(_OLD_DATA, data)
+                _DATA = data
+    except Exception:
+        pass
+    try:
+        logos = ((ctx.get("dispatcharr") or {}).get("directories") or {}).get("logos")
+        if logos:
+            _LOGOS = str(logos)
+    except Exception:
+        pass
 _KEEP = 30
 _ID = re.compile(r"^[0-9]{13}$")
 
@@ -54,12 +102,17 @@ class Plugin:
     # for the whole house and published to every user's app data, so the TVs don't each do it. Runs on the one
     # Dispatcharr process holding the plugin's leadership (Dispatcharr 0.34.0+: the persistent_service capability).
 
-    _status_path = os.path.join(_DATA, "server_status.json")
+    @property
+    def _status_path(self):
+        return os.path.join(_DATA, "server_status.json")
 
     def _server(self):
         spec = importlib.util.spec_from_file_location("viewarr_server", os.path.join(_HERE, "server.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
+        # (A fresh copy each time: it's told where the folders are.)
+        mod.DATA_DIR = _DATA
+        mod.LOGOS_DIR = _LOGOS
         return mod
 
     def _module(self, name):
@@ -70,6 +123,7 @@ class Plugin:
 
     def on_leader_acquired(self, context):
         log = (context or {}).get("logger")
+        _use(context)
         os.makedirs(_DATA, exist_ok=True)
         server = self._server()
         context["start_service"](lambda stop: server.service(stop, log=log, status_path=self._status_path), name="sports")
@@ -201,6 +255,7 @@ class Plugin:
 
     def run(self, action, params, context):
         params = params or {}
+        _use(context)
         if action == "server_status":
             return self._server_status()
         if action == "server_refresh":
@@ -250,7 +305,7 @@ class Plugin:
         data = params.get("data")
         if not isinstance(data, dict):
             return {"status": "error", "message": "No setup to save."}
-        os.makedirs(_BACKUPS, exist_ok=True)
+        os.makedirs(_backups(), exist_ok=True)
         bid = str(int(time.time() * 1000))
         entry = {
             "id": bid,
@@ -258,25 +313,25 @@ class Plugin:
             "savedAt": int(bid),
             "data": data,
         }
-        with open(os.path.join(_BACKUPS, bid + ".json"), "w", encoding="utf-8") as f:
+        with open(os.path.join(_backups(), bid + ".json"), "w", encoding="utf-8") as f:
             json.dump(entry, f)
         # Only the newest few are kept.
         for old in sorted(self._ids(), reverse=True)[_KEEP:]:
             try:
-                os.remove(os.path.join(_BACKUPS, old + ".json"))
+                os.remove(os.path.join(_backups(), old + ".json"))
             except OSError:
                 pass
         return {"status": "success", "message": "Backup saved.", "id": bid}
 
     def _ids(self):
-        if not os.path.isdir(_BACKUPS):
+        if not os.path.isdir(_backups()):
             return []
-        return [n[:-5] for n in os.listdir(_BACKUPS) if n.endswith(".json") and _ID.match(n[:-5])]
+        return [n[:-5] for n in os.listdir(_backups()) if n.endswith(".json") and _ID.match(n[:-5])]
 
     def _backup_list(self):
         items = []
         for bid in sorted(self._ids(), reverse=True):
-            path = os.path.join(_BACKUPS, bid + ".json")
+            path = os.path.join(_backups(), bid + ".json")
             try:
                 with open(path, encoding="utf-8") as f:
                     e = json.load(f)
@@ -288,9 +343,9 @@ class Plugin:
 
     def _backup_get(self, params):
         bid = str(params.get("id") or "")
-        if not _ID.match(bid) or not os.path.isfile(os.path.join(_BACKUPS, bid + ".json")):
+        if not _ID.match(bid) or not os.path.isfile(os.path.join(_backups(), bid + ".json")):
             return {"status": "error", "message": "That backup isn't there."}
-        with open(os.path.join(_BACKUPS, bid + ".json"), encoding="utf-8") as f:
+        with open(os.path.join(_backups(), bid + ".json"), encoding="utf-8") as f:
             e = json.load(f)
         return {"status": "success", "message": "Backup found.", "backup": e}
 
@@ -299,7 +354,7 @@ class Plugin:
         if not _ID.match(bid):
             return {"status": "error", "message": "That backup isn't there."}
         try:
-            os.remove(os.path.join(_BACKUPS, bid + ".json"))
+            os.remove(os.path.join(_backups(), bid + ".json"))
         except OSError:
             return {"status": "error", "message": "That backup isn't there."}
         return {"status": "success", "message": "Backup deleted."}
